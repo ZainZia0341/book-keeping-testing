@@ -638,8 +638,8 @@ async def execute_workflow(input_message: str, thread_id: str, user_id: str) -> 
             await checkpointer.setup()
             graph = workflow.compile(checkpointer=checkpointer)
             # Include user_id in the config
-            config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
-            res = await graph.ainvoke({"messages": [("human", input_message)]}, config, {"recursion_limit": 4})
+            config = {"configurable": {"thread_id": thread_id, "user_id": user_id, "recursion_limit": "4"}}
+            res = await graph.ainvoke({"messages": [("human", input_message)]}, config)
             return res
     except Exception as e:
         print(f"Error during workflow execution: {e}")
