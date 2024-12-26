@@ -1,0 +1,60 @@
+service: Book-keeping-serverless
+
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: python3.9
+  profile: Rafae-zain
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - lambda:*
+      Resource: "*"
+        # - arn:aws:lambda:us-east-1:423623826179:layer:lambda-layer-2:1
+        # - arn:aws:lambda:us-east-1:423623826179:layer:lambda-layer-3:1
+        # - arn:aws:lambda:us-east-1:423623826179:layer:lambda-layer-4:1
+        # - arn:aws:lambda:us-east-1:423623826179:layer:lambda-layer-5:1
+        # - arn:aws:lambda:us-east-1:423623826179:layer:lambda-layer-6:1
+
+functions:
+  Book_keeping:
+    handler: app.lambda-handler
+    events:
+      - httpApi:
+          path: /
+          method: post
+    environment:
+      LANGCHAIN_API_KEY: "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"
+      Postgres_sql_URL: "postgresql://postgres.tabsjiupcpokgdcqgiir:Thedarknight123$@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
+      GOOGLE_API_KEY: "AIzaSyCcpedjOSxsuXVsEwJpvgeZfYwraBOZH3Y"
+      PINECONE_API_KEY: "pcsk_5WRP7w_HQ8Jqv27gK3PQUFV4vV4gPuWJj8ub5Ci2TqFrKrbZYYgx61dMwYmgASwvg3fPMS"
+
+    layers:
+      - arn:aws:lambda:us-east-1:300205417350:layer:lambda-layer-2:1
+      - arn:aws:lambda:us-east-1:300205417350:layer:lambda-layer-3:1
+      - arn:aws:lambda:us-east-1:300205417350:layer:lambda-layer-4:1
+      - arn:aws:lambda:us-east-1:300205417350:layer:lambda-layer-5:1
+      - arn:aws:lambda:us-east-1:300205417350:layer:lambda-layer-6:1
+
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
+
+
+# package:
+#   exclude:
+#     - "**/*"  # Exclude everything by default
+#   include:
+#     - "*.py"  # Include all Python files
+#     - "langchain"  # Include langchain if used as a local directory
+#     - "langchain-google-genai"
+#     - "langchain-chroma"
+#     - "langchain-community"
+#     - "langchain-experimental"
+#     - "langgraph"
+#     - "langgraph-checkpoint-postgres"

@@ -1,0 +1,13 @@
+.env
+
+lambda-layer
+
+mathew_ENV_3.9.0
+
+node_modules
+
+.serverless
+
+dummy_data.pdf
+
+database_data.json
