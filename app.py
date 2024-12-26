@@ -29,6 +29,8 @@ import datetime
 import ast
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 
 # Loading Env file
 load_dotenv()
@@ -348,6 +350,13 @@ def agent1(state):
     - **Company Info Indicators**:
       Look for terms like "company", "employees", "office hours", "address", "support", "product", "policy", "FAQ", "invoices", "pricing", etc.
 
+      
+      Edge cases if use type ask general thing like hello, hi, how are you, write poem, sing song, write memo anything outside the scope of the application then just say "As an AI assistant i can assist you in your application related tasks only please ask something related to application or your financial record on app"
+
+      Note in case of this general question do not re execute retieve tool just say this message and end the conversation.
+
+      Note extra emphesis I see sometimes you were giving answer to user with there old questions in chathistory rather than replying there latest current question so have empheis on that as well pnly reply to there latest question not the old one. old questions are jsut for you context to understand the user query better.
+
     **Args**:
         state (dict): The current conversation state, including user messages, previous tool invocations, and context.
 
@@ -630,7 +639,7 @@ async def execute_workflow(input_message: str, thread_id: str, user_id: str) -> 
             graph = workflow.compile(checkpointer=checkpointer)
             # Include user_id in the config
             config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
-            res = await graph.ainvoke({"messages": [("human", input_message)]}, config)
+            res = await graph.ainvoke({"messages": [("human", input_message)]}, config, {"recursion_limit": 4})
             return res
     except Exception as e:
         print(f"Error during workflow execution: {e}")
@@ -646,6 +655,16 @@ async def execute_workflow(input_message: str, thread_id: str, user_id: str) -> 
 
 app = FastAPI()
 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3004"],  # Frontend origin
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"]
+)
+
 class UserRequest(BaseModel):
     user_id: str
     message: str
@@ -653,17 +672,22 @@ class UserRequest(BaseModel):
 
 @app.post("/agent")
 async def agent_endpoint(req: UserRequest):
-    # 1) You receive 'user_id' and 'message' from the incoming HTTP request
     user_id = req.user_id
     message = req.message
     thread_id = req.thread_id
 
-    # 2) You call your workflow, passing user_id into the config
-    result = await execute_workflow(
+    # Debugging - log received data
+    print(f"Received request: user_id={user_id}, message='{message}', thread_id={thread_id}")
+
+    # Call your actual workflow to get the AI response
+    response_dict = await execute_workflow(
         input_message=message,
         thread_id=thread_id,
         user_id=user_id
     )
 
-    return {"result": result}
+    # Debugging - log the response
+    print(f"Workflow response: {response_dict}")
 
+    # Return the AI response so you can see it in Postman or your frontend
+    return {"result": response_dict}
