@@ -319,7 +319,7 @@ def grade_documents(state) -> Literal["generate", "rewrite"]:
 
 def agent1(state):
     """
-    Invokes the agent model to generate a response based on the current conversation state.
+    Invokes the agent model to route the question to specific tool or node based on user questions (Do not give ai response this agent just route the question to one of the three different nodes)
 
     **Tool Usage Criteria**:
     1. **LedgerIQ_FAQs Tool**:
@@ -341,10 +341,6 @@ def agent1(state):
     3. **general_questions_node**
         - If user ask general questions like "Hello" or "How are you," and any general content generation task like write poem tell joke etc then go towards this node and responde to user without using any tool.
 
-    **Default Behavior for General Queries**:
-    - If the user asks general questions like "Hello" or "How are you," respond with:
-      "As an AI assistant, I can assist you with tasks related to your application or financial records. Please ask something related to the app or your financial data."
-    - Do not invoke any tool in this case.
 
     **Important Notes**:
     - Focus on answering the user's latest question and avoid referencing older queries in the chat history unless explicitly needed for context.
@@ -356,7 +352,7 @@ def agent1(state):
         state (dict): The current conversation state, including user messages, previous tool invocations, and context.
 
     **Returns**:
-        dict: The updated state with the agent's decision and response appended to the conversation messages.
+        dict: The updated state with the agent's decision only do not write anything else in response just route the question to there specific node/tool.
     """
     print("---CALL AGENT---")
     messages = state["messages"]
@@ -548,8 +544,24 @@ def general_questions_node(state) -> dict:
     """
     print("---GENERAL QUESTIONS NODE: Generating response---")
     messages = state["messages"]
-    user_message = messages[0].content
-    
+    # user_message = messages[0].content
+    print(" RRRRRRRRRRRRRR ", messages[0].content)
+    print(" RRRRRRRRRRRRR RRRR ", messages[-1].content)
+    last_human_message = None
+
+    # Iterate in reverse order to find the last HumanMessage
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_human_message = msg
+            break  # Stop as soon as we find the last HumanMessage
+
+    # Access the content of the last HumanMessage
+    if last_human_message:
+        user_message = last_human_message.content
+        print(f"Last Human Message: {user_message}")
+    else:
+        print("No HumanMessage found.")
+    print("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOO ", user_message)
     # Define the prompt template for general responses
     prompt = PromptTemplate(
         template="""

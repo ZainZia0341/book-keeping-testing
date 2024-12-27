@@ -4,6 +4,8 @@ lambda-layer
 
 mathew_ENV_3.9.0
 
+chroma_db
+
 node_modules
 
 .serverless
@@ -11,3 +13,6 @@ node_modules
 dummy_data.pdf
 
 database_data.json
+
+GeeksVisor_Info.pdf
+

@@ -1,56 +1,58 @@
-import json
+# libraries import
 import os
-# from dotenv import load_dotenv
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from langgraph.graph import StateGraph, START, END
-# from chroma_db_init import initialize_chroma, push_files_to_chroma  # Import from combined Chroma and file manager
-from langchain_google_genai import ChatGoogleGenerativeAI
-from session_manager import generate_new_session_id  # For generating new session IDs
-
-from langchain_community.vectorstores import Chroma  # Updated import
-from langchain.tools.retriever import create_retriever_tool  # Updated import
-
-from typing import Annotated, Sequence, Literal
-from typing_extensions import TypedDict
-
-from langchain_core.messages import BaseMessage, HumanMessage
-
-from langgraph.graph.message import add_messages
-
 from langchain import hub
+from dotenv import load_dotenv
+from langchain_community.vectorstores import Chroma
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.tools.retriever import create_retriever_tool
+from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
+from langchain_core.tools import tool
+
+from langgraph.graph.message import add_messages
+from langgraph.graph import END, StateGraph, START
+from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import tools_condition
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from pydantic import BaseModel, Field
+from typing import Annotated, Sequence, Literal, Union, Dict, Any
+from typing_extensions import TypedDict
+from dateutil import parser as date_parser
 
-from langgraph.prebuilt import tools_condition
-from langgraph.prebuilt import ToolNode  # Ensure ToolNode is imported
+from pymongo import MongoClient
+from bson import ObjectId
+import json
+import datetime
+import ast
 
-from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+
+# Loading Env file
 load_dotenv()
 
-# import requests
+# file import
+from pinecone_reuse import get_pinecone_index
 
-# from pinecone_db import create_pinecone_index
-from pinecone_index import initialize_pinecone
-pdf_path = "dummy_data.pdf"
-user_id = "0"
+# from chromadb_reuse import get_chromadb_index
 
-# create_pinecone_index()
-# setting up environment variables
-
-# Load environment variables
-# load_dotenv()
-
-# Set up environment variables
+# LangSmith for Error Tracing
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = os.environ.get("LANGCHAIN_API_KEY")
-DB_URI = os.environ.get("Postgres_sql_URL")
+
+# Setting Environment Variables
+os.environ["GOOGLE_API_KEY"] = os.environ.get("GOOGLE_API_KEY")
+DB_URI = os.environ.get("Postgres_sql_URL") 
+MONGO_URI = os.environ.get("MONGODB_URI")
 
 from langchain_groq import ChatGroq
 
 llm = ChatGroq(
-    model="llama3-groq-70b-8192-tool-use-preview",
+    model="llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
     groq_api_key=os.environ.get("GROQ_API_KEY"),
     temperature=0,
     max_tokens=None,
@@ -58,60 +60,238 @@ llm = ChatGroq(
 
 # Initialize LLM
 # llm = ChatGoogleGenerativeAI(
-#     google_api_key=os.environ.get("GOOGLE_API_KEY"),
 #     model="gemini-1.5-pro",
 #     temperature=0,
 #     max_tokens=None,
 # )
 
-tools = []
-retrieve_node = ToolNode(tools)  # Initialize with empty tools
+retriever = get_pinecone_index()
 
-# Define AgentState
-class AgentState(TypedDict):
+# retriever = get_chromadb_index()
+# Define a global variable for user_id
+
+user_id_global = ""
+
+# Create the retriever tool
+retriever_tool = create_retriever_tool(
+        retriever.as_retriever(),
+        name="LedgerIQ_FAQs",
+        description="This tool retrieves information from Ledger IQ's FAQ dataset. It is designed to handle questions about the app's features, functionality, usage instructions, and company-related information. It provides users with accurate responses to queries like How do I send an invoice? or What are the pricing plans for Ledger IQ?"
+)
+
+
+@tool
+def Mongodb_tool(query_str: Union[str, dict]) -> list:
+    """
+    Executes a MongoDB query and returns matching documents.
+    Accepts either a JSON string or a dictionary.
+    """
+    print("---MONGODB_TOOL: Executing query---")
+    
+    # If the input is a string, parse it to a dictionary
+    if isinstance(query_str, str):
+        print(f"Received query_str as string: {query_str}")
+        try:
+            # Attempt to parse JSON string
+            query_dict = json.loads(query_str)
+            print(f"Parsed query_dict from string: {query_dict}")
+        except json.JSONDecodeError as e:
+            # Handle invalid JSON format
+            raise ValueError(f"Failed to parse JSON query string: {query_str}\nError: {e}")
+    elif isinstance(query_str, dict):
+        query_dict = query_str
+        print(f"Received query_str as dict: {query_dict}")
+    else:
+        raise TypeError("query_str must be either a string or a dictionary.")
+    
+    # Convert string representations to actual ObjectId and datetime objects
+    def convert_values(d):
+        for key, value in d.items():
+            if isinstance(value, str) and value.startswith("ObjectId("):
+                # Extract the ObjectId string
+                oid_str = value[len("ObjectId("):-1].strip('"\'')
+                d[key] = ObjectId(oid_str)
+            elif isinstance(value, str):
+                try:
+                    # Attempt to parse datetime
+                    d[key] = date_parser.isoparse(value)
+                except ValueError:
+                    pass  # Keep as string if not a datetime
+            elif isinstance(value, dict):
+                convert_values(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        convert_values(item)
+        return d
+
+    query_dict = convert_values(query_dict)
+    print(f"Converted query_dict: {query_dict}")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # DYNAMICALLY ADD THE USER FILTER FROM THE GLOBAL VARIABLE user_id_global
+    # ──────────────────────────────────────────────────────────────────────────
+    global user_id_global
+    if user_id_global:
+        # Insert user filter so final query includes "user": ObjectId(user_id_global)
+        query_dict["user"] = ObjectId(user_id_global)
+        print(f"Added user filter to query: {query_dict['user']}")
+
+    print(f"Converted query_dict: {query_dict}")
+
+    # Connect to MongoDB
+    # Ensure this is correctly set
+    print("Connecting to MongoDB...", MONGO_URI)
+    if not MONGO_URI:
+        raise ValueError("MONGO_URI not set in environment variables.")
+
+    client = MongoClient(MONGO_URI)
+    db = client["test"]  # Replace with your actual DB name if different
+    print(f"Connected to MongoDB database: {db.name}")
+
+    # Execute the query in 'transactions' collection
+    transactions_collection = db["transactions"]
+    print(f"Executing query in 'transactions' collection: {query_dict}")
+    results_cursor = transactions_collection.find(query_dict)
+
+    # Convert cursor to a list of dicts
+    results = list(results_cursor)
+    print("Retrieved documents from MongoDB.", results)
+    print(f"Retrieved {len(results)} documents from MongoDB.")
+
+    # Close the connection
+    client.close()
+    print("Closed MongoDB connection.")
+
+    # Return the documents
+    return results
+
+tools = [retriever_tool]
+
+tools_for_agent2 = [Mongodb_tool]
+
+def generate_query_str(state):
+    """
+    Transforms the user's natural language query into a MongoDB query string.
+    Do not add anything before or after the generated query string. No explanation, no comments.
+
+    this is the schema of the mongodb which you need to provide query for
+    Database name
+    db = client["test"]
+    collection name
+    transactions_collection = db["transactions"]
+    An example data in collection
+    {'_id': ObjectId('6724a8eda60bd22124491321'), 'transactionId': 'txn_12y7PcsXyRmUKnD4ZduLKH', 'accountId': 'acct_12y7t4eqByajSUfUknm8rI', '__v': 0, 'amount': 43.51, 'bankAccountId': ObjectId('6724a851270a38bc33cbcf4f'), 'createdAt': datetime.datetime(2024, 11, 1, 10, 9, 49, 93000), 'currencyCode': 'USD', 'date': datetime.datetime(2024, 10, 31, 0, 0), 'description': 'Payment', 'entryType': 'CREDIT', 'isCustom': False, 'merchant': {'id': None, 'name': None}, 'status': 'POSTED', 'subCategory': None, 'transactionCategory': None, 'transactionType': None, 'updatedAt': datetime.datetime(2024, 11, 1, 10, 9, 49, 93000), 'user': ObjectId('6724a7ae270a38bc33cbcf2e')}
+
+    Make sure to filter data based on userid which is this in this data 'user': ObjectId('6724a7ae270a38bc33cbcf2e')} so that each user has only his data
+
+
+    Args:
+        state (messages): The current state, including user messages and config.
+    
+    Returns:
+        dict: The updated state with the generated query string.
+    """
+#     print("---GENERATE QUERY STRING---")
+#     messages = state["messages"]
+#     user_query = messages[0].content
+
+#     # Extract user_id from config
+#     user_id = user_id_global
+#     print(f"Extracted user_id: {user_id}")
+
+#     # Define the prompt for query generation
+#     prompt = PromptTemplate(
+#         template="""Transforms the user's natural language query into a MongoDB query string.
+# Do not add anything before or after the generated query string. Do not include explanations or comments.
+
+# This is the schema of the MongoDB which you need to provide query for:
+# Database name: db = client["test"]
+# Collection name: transactions_collection = db["transactions"]
+# Example document in collection:
+# {{'_id': ObjectId('6724a8eda60bd22124491321'), 'transactionId': 'txn_12y7PcsXyRmUKnD4ZduLKH', 'accountId': 'acct_12y7t4eqByajSUfUknm8rI', '__v': 0, 'amount': 43.51, 'bankAccountId': ObjectId('6724a851270a38bc33cbcf4f'), 'createdAt': datetime.datetime(2024, 11, 1, 10, 9, 49, 93000), 'currencyCode': 'USD', 'date': datetime.datetime(2024, 10, 31, 0, 0), 'description': 'Payment', 'entryType': 'CREDIT', 'isCustom': False, 'merchant': {{'id': None, 'name': None}}, 'status': 'POSTED', 'subCategory': None, 'transactionCategory': None, 'transactionType': None, 'updatedAt': datetime.datetime(2024, 11, 1, 10, 9, 49, 93000), 'user': ObjectId('6724a7ae270a38bc33cbcf2e')}}
+
+# Make sure to include all necessary filters based on the user's request.
+
+# Example query:
+# query = {{
+#     "user": ObjectId("6724a7ae270a38bc33cbcf2e"),
+#     "date": {{
+#         "$gte": datetime.datetime(2024, 12, 1, 0, 0),
+#         "$lt": datetime.datetime(2025, 1, 1, 0, 0)
+#     }}
+# }}
+
+# User Question: {user_query}
+
+# Filter: {user_id}
+
+# MongoDB Query:
+# # Output only the query string. Do not include explanations, comments, or any additional text.
+# """,
+#         input_variables=["user_query", "user_id"],
+#     )
+
+#     # Chain
+#     query_chain = prompt | llm | StrOutputParser()
+
+#     # Generate the query string
+#     generated_query = query_chain.invoke({"user_query": user_query, "user_id": user_id})
+#     print(f"Generated MongoDB Query: {generated_query}")
+
+#     return {"messages": [AIMessage(content=generated_query)]}
+#     # return "mongodb_tool_node"
+    print("---CALL AGENT 2 (generate_query_str)---")
+    messages = state["messages"]
+    model = llm.bind_tools(tools_for_agent2)  # Bind only Mongodb_tool
+    response = model.invoke(messages)
+    return {"messages": [response]}
+
+
+
+class AgentState(TypedDict, total=False):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
-# Define functions for workflow nodes
+
+### Edges
+
 
 def grade_documents(state) -> Literal["generate", "rewrite"]:
     """
     Determines whether the retrieved documents are relevant to the question.
 
     Args:
-        state (AgentState): The current state
+        state (messages): The current state
 
     Returns:
-        Literal["generate", "rewrite"]: Decision on the next node
+        str: A decision for whether the documents are relevant or not
     """
 
     print("---CHECK RELEVANCE---")
 
-    # Data model for structured output
-    class Grade(BaseModel):
+    # Data model
+    class grade(BaseModel):
         """Binary score for relevance check."""
+
         binary_score: str = Field(description="Relevance score 'yes' or 'no'")
 
-    # LLM with structured output
-    llm_with_tool = llm.with_structured_output(Grade)
+    # LLM
+    model = llm
 
-    # Prompt for grading
+    # LLM with tool and validation
+    llm_with_tool = model.with_structured_output(grade)
+
+    # Prompt
     prompt = PromptTemplate(
-        template="""You are a grader assessing the relevance of a retrieved document to a user question.
-        
-                        Here is the retrieved document:
-
-                        {context}
-
-                        Here is the user question:
-
-                        {question}
-
-                    If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant.
-                    Give a binary score 'yes' or 'no' to indicate whether the document is relevant to the question.""",
+        template="""You are a grader assessing relevance of a retrieved document to a user question. \n 
+        Here is the retrieved document: \n\n {context} \n\n
+        Here is the user question: {question} \n
+        If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. \n
+        Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.""",
         input_variables=["context", "question"],
     )
 
-    # Chain the prompt with the LLM
+    # Chain
     chain = prompt | llm_with_tool
 
     messages = state["messages"]
@@ -120,63 +300,113 @@ def grade_documents(state) -> Literal["generate", "rewrite"]:
     question = messages[0].content
     docs = last_message.content
 
-    # Invoke the chain with context and question
     scored_result = chain.invoke({"question": question, "context": docs})
 
-    score = scored_result.binary_score.lower()
+    score = scored_result.binary_score
 
     if score == "yes":
         print("---DECISION: DOCS RELEVANT---")
         return "generate"
+
     else:
         print("---DECISION: DOCS NOT RELEVANT---")
-        print(f"Score: {score}")
+        print(score)
         return "rewrite"
+
+
+### Nodes
+
+
+def agent1(state):
+    """
+    Invokes the agent model to route the question to specific tool or node based on user questions (Do not give ai response this agent just route the question to one of the three different nodes)
+
+    **Tool Usage Criteria**:
+    1. **LedgerIQ_FAQs Tool**:
+       - Use this tool for questions about Ledger IQ's general features, app usage instructions, or company-related information.
+       - Examples include:
+         - "What is Ledger IQ?"
+         - "How do I send an invoice?"
+         - "What are the pricing plans for Ledger IQ?"
+       - The tool retrieves answers from the FAQ dataset. Only use the text after the numbered question as the response.
+
+    2. **Mongodb_tool**:
+       - Use this tool for user-specific financial data queries, such as income, expenses, profit, cash flow, or financial metrics.
+       - Examples include:
+         - "What is my net profit for this year?"
+         - "Can you show my expenses for the last month?"
+         - "What is my ROI for investments this quarter?"
+       - The tool retrieves data from MongoDB and performs calculations as required to generate a personalized financial response.
     
+    3. **general_questions_node**
+        - If user ask general questions like "Hello" or "How are you," and any general content generation task like write poem tell joke etc then go towards this node and responde to user without using any tool.
+
+
+    **Important Notes**:
+    - Focus on answering the user's latest question and avoid referencing older queries in the chat history unless explicitly needed for context.
+    - Clearly route queries based on the keywords and context provided:
+      - Financial data or calculations → `Mongodb_tool`
+      - General app or company-related information → `LedgerIQ_FAQs`
+
+    **Args**:
+        state (dict): The current conversation state, including user messages, previous tool invocations, and context.
+
+    **Returns**:
+        dict: The updated state with the agent's decision only do not write anything else in response just route the question to there specific node/tool.
+    """
+    print("---CALL AGENT---")
+    messages = state["messages"]
+    print(f"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ", messages)
+    model = llm
+    model = model.bind_tools(tools)
+    response = model.invoke(messages)
+    # We return a list, because this will get added to the existing list
+    return {"messages": [response]}
+
+
 def rewrite(state):
     """
-    Transforms the user's query to produce a better question.
+    Transform the query to produce a better question.
 
     Args:
-        state (AgentState): The current state
+        state (messages): The current state
 
     Returns:
-        dict: Updated state with rephrased question
+        dict: The updated state with re-phrased question
     """
 
     print("---TRANSFORM QUERY---")
     messages = state["messages"]
     question = messages[0].content
 
-    # Message to instruct LLM to improve the question
     msg = [
         HumanMessage(
-            content=f"""Look at the input and reason about the underlying semantic intent/meaning.
-            
-                        Here is the initial question:
-
-                        {question}
-
-                        Formulate an improved question:""",
+            content=f""" \n 
+    Look at the input and try to reason about the underlying semantic intent / meaning. \n 
+    Here is the initial question:
+    \n ------- \n
+    {question} 
+    \n ------- \n
+    Formulate an improved question: """,
         )
     ]
 
-    # Invoke the LLM to get an improved question
-    response = llm.invoke(msg)
+    # Grader
+    model = llm
+    response = model.invoke(msg)
     return {"messages": [response]}
 
 
 def generate(state):
     """
-    Generates an answer based on the relevant documents.
+    Generate answer
 
     Args:
-        state (AgentState): The current state
+        state (messages): The current state
 
     Returns:
-        dict: Updated state with the generated answer
+         dict: The updated state with re-phrased question
     """
-
     print("---GENERATE---")
     messages = state["messages"]
     question = messages[0].content
@@ -184,100 +414,260 @@ def generate(state):
 
     docs = last_message.content
 
-    # Pull the RAG prompt from LangChain Hub
+    # Prompt
     prompt = hub.pull("rlm/rag-prompt")
 
-    # Chain the prompt with the LLM and output parser
+
+    # Chain
     rag_chain = prompt | llm | StrOutputParser()
 
-    # Invoke the chain with context and question
+    # Run
     response = rag_chain.invoke({"context": docs, "question": question})
     return {"messages": [response]}
 
 
-def agent(state):
-    """
-    Invokes the agent model to generate a response based on the current state.
-    Decides whether to retrieve using the retriever tool or end the conversation.
 
-    Args:
-        state (AgentState): The current state
+# class AIMessage(TypedDict):
+#     content: str
 
-    Returns:
-        dict: Updated state with the agent response appended to messages
-    """
-
-    print("---CALL AGENT---")
+def generate_finance_answer(state):
+    print("---GENERATE FINANCE INFO---")
     messages = state["messages"]
-    model_with_tools = llm.bind_tools(tools)
-    response = model_with_tools.invoke(messages)
-    # Return a list to append to the existing messages
-    return {"messages": [response]}
+    
+    # if len(messages) < 2:
+    #     print("Error: Insufficient data in state.messages.")
+    #     return {"messages": [AIMessage(content="There was an error processing your financial data. Please try again later.")]}
+    
+    user_question = messages[0].content  # User's original question
+    tool_message = messages[-1]  # Assuming ToolMessage is the last message
+    financial_data = tool_message.content  # Raw data as string
+    print("State data:", state)
+
+    print(f"User Question: {user_question}")
+    print(f"Financial data received: {financial_data}")
+
+    # Check if financial_data is a list
+    # if not isinstance(financial_data, list):
+    #     print("Error: financial_data is not a list of documents.")
+    #     return {"messages": [AIMessage(content="There was an error processing your financial data. Please try again later.")]}
+    
+    if not financial_data:
+        print("No financial data found for the given query.")
+        return {"messages": [AIMessage(content="No financial data found for the given query.")]}
+    
+    # Convert the financial_data list to a string representation for the prompt
+    financial_data_str = "\n".join([str(doc) for doc in financial_data])
+    
+    # Define the prompt for the LLM with input variables
+    llm_prompt = """
+    You are a financial analyst assistant. Based on the transaction data retrieved from MongoDB and the user's question, perform the necessary calculations and provide a comprehensive financial response specific to the user's request.
+
+    **User Question:**
+    {user_question}
+
+    **Transaction Data from MongoDB:**
+    {financial_data}
+
+    **Instructions:**
+    1. Use the transaction data to perform any calculations required to answer the user's question. Examples include:
+    - Summing, averaging, or categorizing income or expenses.
+    - Identifying trends or patterns in revenue, expenses, or cash flow.
+    - Extracting specific records (e.g., transactions within a date range, for specific categories, etc.).
+    - Calculating metrics like total income, total expenses, profit, ROI, or other KPIs as relevant to the question.
+    2. Format the response clearly and concisely, ensuring it directly addresses the user's query.
+    3. Include insights, trends, or actionable recommendations if applicable.
+    4. Do not include explanations or comments outside of the financial response.
+
+    **Response:** 
+"""
+
+    # Create the PromptTemplate with input variables
+    prompt = PromptTemplate(
+        template=llm_prompt,
+        input_variables=["user_question", "financial_data"]
+    )
+
+    # Chain the prompt with the LLM and output parser
+    query_chain = prompt | llm | StrOutputParser()
+
+    # Generate the financial report by passing the required variables
+    try:
+        generated_report = query_chain.invoke({
+            "user_question": user_question,
+            "financial_data": financial_data_str
+        })
+        print(f"LLM Generated Finance Report: {generated_report}")
+    except Exception as e:
+        print(f"Error in generating finance report: {e}")
+        return {"messages": [AIMessage(content="There was an error generating your financial report. Please try again later.")]}
+    
+    return {"messages": [AIMessage(content=generated_report)]}
 
 
+def custom_condition(state):
+    """
+    Custom routing condition based on the user's query content.
+    Routes to 'generate_query_str' for personal finance queries,
+    and 'retrieve' for company information queries.
+    """
+    question = state["messages"][0].content.lower()
+    finance_keywords = [
+        "my account", "transactions", "credited", "debits",
+        "balance", "profit", "loss", "budget", "income", 
+        "expenses", "cash flow", "investment", "roi",
+        "financial metrics", "revenue", "expense", "profit margin",
+        "net profit", "expense ratio", "revenue growth", "return on sales"
+    ]
+    general_keywords = [
+        "hello", "hi", "hey", "whatsup", "what's up", "how are you",
+        "write a poem", "tell me a joke", "good morning", "good evening"
+    ]
+    if any(keyword in question for keyword in general_keywords):
+        print("Routing to general_questions_node based on general keywords.")
+        return "general_questions_node"
+    elif any(keyword in question for keyword in finance_keywords):
+        print("Routing to generate_query_str based on finance keywords.")
+        return "generate_query_str"
+    else:
+        print("Routing to LedgerIQ_FAQs based on company info keywords.")
+        return "retrieve"
+    
+def general_questions_node(state) -> dict:
+    """
+    Handles general user inquiries such as greetings, jokes, or poems without using any tools.
+    
+    Args:
+        state (dict): The current conversation state, including user messages.
+    
+    Returns:
+        dict: The updated state with the generated general response.
+    """
+    print("---GENERAL QUESTIONS NODE: Generating response---")
+    messages = state["messages"]
+    # user_message = messages[0].content
+    print(" RRRRRRRRRRRRRR ", messages[0].content)
+    print(" RRRRRRRRRRRRR RRRR ", messages[-1].content)
+    last_human_message = None
 
-# Define the workflow using StateGraph
+    # Iterate in reverse order to find the last HumanMessage
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_human_message = msg
+            break  # Stop as soon as we find the last HumanMessage
+
+    # Access the content of the last HumanMessage
+    if last_human_message:
+        user_message = last_human_message.content
+        print(f"Last Human Message: {user_message}")
+    else:
+        print("No HumanMessage found.")
+    print("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOO ", user_message)
+    # Define the prompt template for general responses
+    prompt = PromptTemplate(
+        template="""
+        You are a friendly and helpful AI assistant.
+        Respond to the user's message in a natural and engaging manner without using any external tools.
+        
+        Do not generate poem or do general content generation task instead tell the user that you are an AI assistant specialized in financial data and ask them to ask something related to the app or their financial data.
+
+        Example question: "Hi"
+
+        AI Responce : "Hello! I'm an AI assistant specialized in financial data. Please ask something related to the app or your financial data."
+        
+        User Message: "{user_message}"
+        
+        AI Response:
+        """,
+        input_variables=["user_message"]
+    )
+    
+    # Chain the prompt with the LLM and output parser
+    response_chain = prompt | llm | StrOutputParser()
+    
+    try:
+        ai_response = response_chain.invoke({"user_message": user_message})
+        print(f"Generated General Response: {ai_response}")
+    except Exception as e:
+        print(f"Error in general_questions_node: {e}")
+        ai_response = "I'm sorry, but I couldn't process your request. Could you please try again?"
+    
+    return {"messages": [AIMessage(content=ai_response)]}
+
+
+# Define a new graph
 workflow = StateGraph(AgentState)
 
-# Add nodes to the workflow
-workflow.add_node("agent", agent)  # Agent node
-workflow.add_node("retrieve", retrieve_node)  # Retriever node
-workflow.add_node("rewrite", rewrite)  # Rewriting node
-workflow.add_node("generate", generate)  # Generating node
+# Define the nodes we will cycle between
+workflow.add_node("agent1", agent1)  # agent1
+retrieve_node = ToolNode([retriever_tool])
+workflow.add_node("retrieve", retrieve_node)  # retrieval
+mongodb_tool = ToolNode([Mongodb_tool])
+workflow.add_node("mongodb_tool_node", mongodb_tool)
+workflow.add_node("general_questions_node", general_questions_node)
+workflow.add_node("generate_query_str", generate_query_str)  # Generates query_str
+workflow.add_node("rewrite", rewrite)  # Re-writing the question
+workflow.add_node("generate", generate)  # Generating a response after we know the documents are relevant
+workflow.add_node("generate_finance_answer", generate_finance_answer)  # Generating a response after we know the documents are relevant
+# Call agent node to decide to retrieve or not
+workflow.add_edge(START, "agent1")
 
-# Define edges between nodes
-workflow.add_edge(START, "agent")  # Start with agent
+# Decide whether to retrieve
+# workflow.add_conditional_edges(
+#     "agent1",
+#     # Assess agent decision
+#     tools_condition,
+#     {
+#         # Translate the condition outputs to nodes in our graph
+#         "mongodb_tool_node": "mongodb_tool_node",
+#         "tools": "retrieve",
+#         END: "retrieve",
+#     },
+# )
 
-# Conditional edges based on agent's decision
+# Decide whether to retrieve using custom_condition
 workflow.add_conditional_edges(
-    "agent",
-    tools_condition,  # Condition to decide next node
+    "agent1",
+    custom_condition,  # Use custom condition instead of tools_condition
     {
-        "tools": "retrieve",  # If tools are to be used, go to retrieve
-        END: END,  # Otherwise, end the conversation
+        "generate_query_str": "generate_query_str",
+        "retrieve": "retrieve",
+        "general_questions_node": "general_questions_node"
     },
 )
 
-# Conditional edges after retrieval based on document relevance
+# Edges taken after the `action` node is called.
 workflow.add_conditional_edges(
     "retrieve",
-    grade_documents,  # Decide to generate or rewrite based on relevance
+    # Assess agent decision
+    grade_documents,{
+        "generate": "generate",  # If relevant, generate a response
+        "rewrite": "rewrite",  # If not relevant, rewrite the query
+    },
 )
 
-workflow.add_edge("generate", END)  # After generating, end
-workflow.add_edge("rewrite", "agent")  # After rewriting, go back to agent
+
+# Update edges for MongoDB path
+workflow.add_edge("generate_query_str", "mongodb_tool_node")  # After routing to MongoDB tool 
+workflow.add_edge("rewrite", "agent1")                # After rewriting, go back to agent1
+workflow.add_edge("generate", END)                     # After generating response, end
+workflow.add_edge("mongodb_tool_node", "generate_finance_answer")  # After MongoDB query, generate finance answer
+workflow.add_edge("generate_finance_answer", END)      # After finance answer, end
+workflow.add_edge("general_questions_node", END)
 
 
-def initialize_retriever_tool(user_id: int):
-    """
-    Initializes the retriever tool for a specific user by setting up ChromaDB with user-specific data.
+# ____________________________________________________ Display Graph ____________________________________________________ #
 
-    Args:
-        user_id (int): The unique identifier of the user
-    """
-    global tools, retrieve_node
-    print('Initializing retriever tool for user:', user_id)
+def get_langGraph_image_flow():
+    from IPython.display import Image, display
+    try:
+        graph = workflow.compile()
+        display(Image(graph.get_graph(xray=True).draw_mermaid_png()))
+    except Exception:
+        # This requires some extra dependencies and is optional
+        pass
 
-    # Initialize or load ChromaDB
-    retriever = initialize_pinecone().as_retriever()
 
-    # Set up the retriever to filter by user_id
-    retriever.search_kwargs['filter'] = {'user_id': user_id}
-
-    # Create the retriever tool
-    retriever_tool = create_retriever_tool(
-        retriever,
-        name="Application_General_Information",
-        description="In this tool use have the information about the company and its businees and details about the application will be used.",
-    )
-
-    # Update the global tools list
-    tools = [retriever_tool]
-
-    # Update the retrieve node's tools
-    retrieve_node.tools = tools
-
-    print('Retriever tool initialized for user:', user_id)
+# ________________________________________________________________________________________________________________________ #
 
 
 async def drop_prepared_statements(conn):
@@ -290,35 +680,20 @@ async def drop_prepared_statements(conn):
     async with conn.cursor() as cursor:
         await cursor.execute("DEALLOCATE ALL;")
 
-# Function to start a new conversation with a unique session ID
-def start_new_conversation() -> str:
-    """
-    Generates a new session/thread ID and starts a new conversation.
-
-    Returns:
-        str: The newly generated thread ID
-    """
-    thread_id = generate_new_session_id()  # Generate new unique session ID
-    print(f"New conversation started with thread ID: {thread_id}")
-    # This thread_id will be passed to execute_workflow when handling the conversation
-    return thread_id
-
-
-async def execute_workflow(input_message: str, thread_id: str, user_id: int) -> dict:
+async def execute_workflow(input_message: str, thread_id: str, user_id: str) -> dict:
+    global user_id_global
+    user_id_global = user_id
     """
     Executes the workflow with the given input message, thread ID, and user ID.
 
     Args:
         input_message (str): The user's input message
         thread_id (str): The unique identifier for the conversation thread
-        user_id (int): The unique identifier of the user
 
     Returns:
         dict: The result of the workflow execution
     """
     try:
-        # Initialize retriever tool for the user
-        initialize_retriever_tool(user_id)
 
         async with AsyncPostgresSaver.from_conn_string(DB_URI) as checkpointer:
             async with checkpointer.conn.transaction():
@@ -326,124 +701,56 @@ async def execute_workflow(input_message: str, thread_id: str, user_id: int) -> 
             await checkpointer.setup()
             graph = workflow.compile(checkpointer=checkpointer)
             # Include user_id in the config
-            config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
+            config = {"configurable": {"thread_id": thread_id, "user_id": user_id, "recursion_limit": "4"}}
             res = await graph.ainvoke({"messages": [("human", input_message)]}, config)
             return res
     except Exception as e:
         print(f"Error during workflow execution: {e}")
         return {"error": str(e)}
-
-# -------------------- FASTAPI SERVER -------------------- #
-
-import asyncio
-import uvicorn
-
-asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-
-async def app(scope, receive, send):
-    print(asyncio.get_event_loop_policy())
-
-if __name__ == "__main__":
-    uvicorn.run("app:app", port=8010)
+    
 
 
-# ____________________________________________________________________________________________________________________________________________________ #
-from fastapi import FastAPI
+
+# ____________________________________________________ FAST API ____________________________________________________ #
+
+
+# ____________________________________________________ FAST API ____________________________________________________ #
 
 app = FastAPI()
 
-class ChatRequest(BaseModel):
-    input_message: str
-    user_id: int
-    thread_id: str 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3004"],  # Frontend origin
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"]
+)
 
-@app.post("/chat")
-async def chat_endpoint(request: ChatRequest):
-    try:
-        input_message = request.input_message
-        user_id = request.user_id
-        thread_id = request.thread_id or start_new_conversation()
-        
-        if not input_message or not user_id:
-            raise HTTPException(status_code=400, detail="Missing 'input_message' or 'user_id'.")
-        
-        workflow_result = await execute_workflow(input_message, thread_id, user_id)
-        return workflow_result
-    except Exception as e:
-        print(f"Unhandled exception: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+class UserRequest(BaseModel):
+    user_id: str
+    message: str
+    thread_id: str
 
+@app.post("/agent")
+async def agent_endpoint(req: UserRequest):
+    user_id = req.user_id
+    message = req.message
+    thread_id = req.thread_id
 
-if __name__ == "__main__":
-    # Run the server locally
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Debugging - log received data
+    print(f"Received request: user_id={user_id}, message='{message}', thread_id={thread_id}")
 
+    # Call your actual workflow to get the AI response
+    response_dict = await execute_workflow(
+        input_message=message,
+        thread_id=thread_id,
+        user_id=user_id
+    )
 
+    # Debugging - log the response
+    print(f"Workflow response: {response_dict}")
 
-
-
-
-# ____________________________________________________________________________________________________________________________________________________ #
-
-
-# # Revised lambda_handler
-# async def lambda_handler(event, context):
-#     """
-#     AWS Lambda handler to process incoming requests and execute the workflow.
-
-#     Args:
-#         event: The event triggering the Lambda function
-#         context: The context in which the function is called
-
-#     Returns:
-#         dict: The HTTP response
-#     """
-#     try:
-#         # Ensure the request method is PUT
-#         if event.get("httpMethod") != "POST":
-#             return {
-#                 "statusCode": 405,
-#                 "body": json.dumps({"error": "Method Not Allowed. Use PUT."}),
-#             }
-
-#         # Parse the request body
-#         body = event.get("body")
-#         if not body:
-#             return {
-#                 "statusCode": 400,
-#                 "body": json.dumps({"error": "Empty request body."}),
-#             }
-
-#         try:
-#             data = json.loads(body)
-#         except json.JSONDecodeError:
-#             return {
-#                 "statusCode": 400,
-#                 "body": json.dumps({"error": "Invalid JSON format."}),
-#             }
-
-#         # Extract required fields
-#         input_message = data.get("input_message")
-#         user_id = data.get("user_id")
-#         thread_id = data.get("thread_id", start_new_conversation())
-
-#         if not input_message or not user_id:
-#             return {
-#                 "statusCode": 400,
-#                 "body": json.dumps({"error": "Missing 'input_message' or 'user_id' in request."}),
-#             }
-
-#         # Execute the workflow
-#         workflow_result = await execute_workflow(input_message, thread_id, user_id)
-
-#         return {
-#             "statusCode": 200,
-#             "body": json.dumps(workflow_result),
-#         }
-
-#     except Exception as e:
-#         print(f"Unhandled exception: {e}")
-#         return {
-#             "statusCode": 500,
-#             "body": json.dumps({"error": "Internal Server Error"}),
-#         }
+    # Return the AI response so you can see it in Postman or your frontend
+    return {"result": response_dict}
