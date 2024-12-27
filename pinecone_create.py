@@ -32,7 +32,7 @@ def create_pinecone_index():
 def create_chunks_document(pdf_path):
     loader = PyPDFLoader(pdf_path)
     documents = loader.load()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
     doc_splits = text_splitter.split_documents(documents)
     return doc_splits
 

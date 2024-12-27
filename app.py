@@ -49,6 +49,21 @@ os.environ["GOOGLE_API_KEY"] = os.environ.get("GOOGLE_API_KEY")
 DB_URI = os.environ.get("Postgres_sql_URL") 
 MONGO_URI = os.environ.get("MONGODB_URI")
 
+from langchain_groq import ChatGroq
+
+llm = ChatGroq(
+    model="llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
+    groq_api_key=os.environ.get("GROQ_API_KEY"),
+    temperature=0,
+    max_tokens=None,
+)
+
+# Initialize LLM
+# llm = ChatGoogleGenerativeAI(
+#     model="gemini-1.5-pro",
+#     temperature=0,
+#     max_tokens=None,
+# )
 
 retriever = get_pinecone_index()
 
@@ -61,7 +76,7 @@ user_id_global = ""
 retriever_tool = create_retriever_tool(
         retriever.as_retriever(),
         name="LedgerIQ_FAQs",
-        description="Use this tool to retrieve Ledger IQ FAQs, app usage instructions, or general company data. Ideal for questions related to Ledger IQ's functionality or features."
+        description="This tool retrieves information from Ledger IQ's FAQ dataset. It is designed to handle questions about the app's features, functionality, usage instructions, and company-related information. It provides users with accurate responses to queries like How do I send an invoice? or What are the pricing plans for Ledger IQ?"
 )
 
 
@@ -232,21 +247,7 @@ def generate_query_str(state):
     response = model.invoke(messages)
     return {"messages": [response]}
 
-from langchain_groq import ChatGroq
 
-llm = ChatGroq(
-    model="llama-3.3-70b-specdec", # "llama3-8b-8192"
-    groq_api_key=os.environ.get("GROQ_API_KEY"),
-    temperature=0,
-    max_tokens=None,
-)
-
-# Initialize LLM
-# llm = ChatGoogleGenerativeAI(
-#     model="gemini-1.5-pro",
-#     temperature=0,
-#     max_tokens=None,
-# )
 
 class AgentState(TypedDict, total=False):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -320,42 +321,36 @@ def agent1(state):
     """
     Invokes the agent model to generate a response based on the current conversation state.
 
-    The agent analyzes the user's question and decides the next step by selecting the appropriate tool:
-    1. **Personal Finance Queries**: If the user's question involves financial details specific to their account (e.g., transactions, budgets, profit/loss), the agent uses the `Mongodb_tool` to retrieve and process the necessary data.
-    2. **Company Information Queries**: If the user's question relates to Ledger IQ's general company information, FAQs, app usage instructions, or product details, the agent uses the `LedgerIQ_FAQs` tool to retrieve relevant information.
+    **Tool Usage Criteria**:
+    1. **LedgerIQ_FAQs Tool**:
+       - Use this tool for questions about Ledger IQ's general features, app usage instructions, or company-related information.
+       - Examples include:
+         - "What is Ledger IQ?"
+         - "How do I send an invoice?"
+         - "What are the pricing plans for Ledger IQ?"
+       - The tool retrieves answers from the FAQ dataset. Only use the text after the numbered question as the response.
 
-    **Routing Criteria:**
-    - **Personal Finance Queries**:
-      Detect keywords and phrases that indicate the user's focus is on their financial data. Examples include:
-        - "What is the total credited amount in my account?"
-        - "Show me my transactions for January."
-        - "What was my total debit between April and May?"
-        - "How much profit did I make last quarter?"
-        - "Can you provide my budget overview for this year?"
+    2. **Mongodb_tool**:
+       - Use this tool for user-specific financial data queries, such as income, expenses, profit, cash flow, or financial metrics.
+       - Examples include:
+         - "What is my net profit for this year?"
+         - "Can you show my expenses for the last month?"
+         - "What is my ROI for investments this quarter?"
+       - The tool retrieves data from MongoDB and performs calculations as required to generate a personalized financial response.
+    
+    3. **general_questions_node**
+        - If user ask general questions like "Hello" or "How are you," and any general content generation task like write poem tell joke etc then go towards this node and responde to user without using any tool.
 
-    - **Company Information Queries**:
-      Detect keywords and phrases related to Ledger IQ's company or product information. Examples include:
-        - "What are Ledger IQ's pricing plans?"
-        - "How do I send an invoice?"
-        - "Where can I find the company's privacy policy?"
-        - "What payment methods can clients use for invoices?"
-        - "Can you explain how Ledger IQ tracks cash payments?"
+    **Default Behavior for General Queries**:
+    - If the user asks general questions like "Hello" or "How are you," respond with:
+      "As an AI assistant, I can assist you with tasks related to your application or financial records. Please ask something related to the app or your financial data."
+    - Do not invoke any tool in this case.
 
-    **Default Behavior**:
-    If the query does not clearly align with either category, default to using the `LedgerIQ_FAQs` tool, as company-related queries tend to have a broader scope.
-
-    **Instructions for Implementation**:
-    - **Personal Finance Indicators**: 
-      Look for terms like "my account", "transactions", "credited", "debits", "balance", "profit", "loss", "budget", "income", "expenses", "cash flow", "investment", "ROI", "financial metrics", etc.
-    - **Company Info Indicators**:
-      Look for terms like "company", "employees", "office hours", "address", "support", "product", "policy", "FAQ", "invoices", "pricing", etc.
-
-      
-      Edge cases if use type ask general thing like hello, hi, how are you, write poem, sing song, write memo anything outside the scope of the application then just say "As an AI assistant i can assist you in your application related tasks only please ask something related to application or your financial record on app"
-
-      Note in case of this general question do not re execute retieve tool just say this message and end the conversation.
-
-      Note extra emphesis I see sometimes you were giving answer to user with there old questions in chathistory rather than replying there latest current question so have empheis on that as well pnly reply to there latest question not the old one. old questions are jsut for you context to understand the user query better.
+    **Important Notes**:
+    - Focus on answering the user's latest question and avoid referencing older queries in the chat history unless explicitly needed for context.
+    - Clearly route queries based on the keywords and context provided:
+      - Financial data or calculations → `Mongodb_tool`
+      - General app or company-related information → `LedgerIQ_FAQs`
 
     **Args**:
         state (dict): The current conversation state, including user messages, previous tool invocations, and context.
@@ -365,6 +360,7 @@ def agent1(state):
     """
     print("---CALL AGENT---")
     messages = state["messages"]
+    print(f"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ", messages)
     model = llm
     model = model.bind_tools(tools)
     response = model.invoke(messages)
@@ -526,12 +522,64 @@ def custom_condition(state):
         "financial metrics", "revenue", "expense", "profit margin",
         "net profit", "expense ratio", "revenue growth", "return on sales"
     ]
-    if any(keyword in question for keyword in finance_keywords):
+    general_keywords = [
+        "hello", "hi", "hey", "whatsup", "what's up", "how are you",
+        "write a poem", "tell me a joke", "good morning", "good evening"
+    ]
+    if any(keyword in question for keyword in general_keywords):
+        print("Routing to general_questions_node based on general keywords.")
+        return "general_questions_node"
+    elif any(keyword in question for keyword in finance_keywords):
         print("Routing to generate_query_str based on finance keywords.")
         return "generate_query_str"
     else:
         print("Routing to LedgerIQ_FAQs based on company info keywords.")
         return "retrieve"
+    
+def general_questions_node(state) -> dict:
+    """
+    Handles general user inquiries such as greetings, jokes, or poems without using any tools.
+    
+    Args:
+        state (dict): The current conversation state, including user messages.
+    
+    Returns:
+        dict: The updated state with the generated general response.
+    """
+    print("---GENERAL QUESTIONS NODE: Generating response---")
+    messages = state["messages"]
+    user_message = messages[0].content
+    
+    # Define the prompt template for general responses
+    prompt = PromptTemplate(
+        template="""
+        You are a friendly and helpful AI assistant.
+        Respond to the user's message in a natural and engaging manner without using any external tools.
+        
+        Do not generate poem or do general content generation task instead tell the user that you are an AI assistant specialized in financial data and ask them to ask something related to the app or their financial data.
+
+        Example question: "Hi"
+
+        AI Responce : "Hello! I'm an AI assistant specialized in financial data. Please ask something related to the app or your financial data."
+        
+        User Message: "{user_message}"
+        
+        AI Response:
+        """,
+        input_variables=["user_message"]
+    )
+    
+    # Chain the prompt with the LLM and output parser
+    response_chain = prompt | llm | StrOutputParser()
+    
+    try:
+        ai_response = response_chain.invoke({"user_message": user_message})
+        print(f"Generated General Response: {ai_response}")
+    except Exception as e:
+        print(f"Error in general_questions_node: {e}")
+        ai_response = "I'm sorry, but I couldn't process your request. Could you please try again?"
+    
+    return {"messages": [AIMessage(content=ai_response)]}
 
 
 # Define a new graph
@@ -543,6 +591,7 @@ retrieve_node = ToolNode([retriever_tool])
 workflow.add_node("retrieve", retrieve_node)  # retrieval
 mongodb_tool = ToolNode([Mongodb_tool])
 workflow.add_node("mongodb_tool_node", mongodb_tool)
+workflow.add_node("general_questions_node", general_questions_node)
 workflow.add_node("generate_query_str", generate_query_str)  # Generates query_str
 workflow.add_node("rewrite", rewrite)  # Re-writing the question
 workflow.add_node("generate", generate)  # Generating a response after we know the documents are relevant
@@ -570,6 +619,7 @@ workflow.add_conditional_edges(
     {
         "generate_query_str": "generate_query_str",
         "retrieve": "retrieve",
+        "general_questions_node": "general_questions_node"
     },
 )
 
@@ -590,6 +640,7 @@ workflow.add_edge("rewrite", "agent1")                # After rewriting, go back
 workflow.add_edge("generate", END)                     # After generating response, end
 workflow.add_edge("mongodb_tool_node", "generate_finance_answer")  # After MongoDB query, generate finance answer
 workflow.add_edge("generate_finance_answer", END)      # After finance answer, end
+workflow.add_edge("general_questions_node", END)
 
 
 # ____________________________________________________ Display Graph ____________________________________________________ #
