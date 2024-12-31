@@ -52,7 +52,7 @@ MONGO_URI = os.environ.get("MONGODB_URI")
 from langchain_groq import ChatGroq
 
 llm = ChatGroq(
-    model="llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
+    model="llama-3.3-70b-specdec", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
     groq_api_key=os.environ.get("GROQ_API_KEY"),
     temperature=0,
     max_tokens=None,
@@ -83,46 +83,67 @@ retriever_tool = create_retriever_tool(
 @tool
 def Mongodb_tool(query_str: Union[str, dict]) -> list:
     """
-    Executes a MongoDB query and returns matching documents.
-    Accepts either a JSON string or a dictionary.
+    MongoDB Tool
+    ------------
+    Executes a MongoDB query and returns matching documents from the 'transactions' collection.
+
+    Accepts either:
+      - A JSON string, or
+      - A Python dictionary
+
+    1. Parses/validates the query.
+    2. Injects the 'user' field from the global variable user_id_global (stored as a **string**).
+    3. Connects to MongoDB and runs `find(query)`.
+    4. Returns the list of transaction documents.
+
+    IMPORTANT:
+    - This code no longer converts user_id_global to an ObjectId. 
+      It assumes the database has 'user' stored as a string, e.g.:
+         "user": "6724a7ae270a38bc33cbcf2e"
+    - If your DB stores 'user' as an ObjectId, you must convert it appropriately 
+      (and also store that user as an ObjectId in the documents).
     """
     print("---MONGODB_TOOL: Executing query---")
-    
-    # If the input is a string, parse it to a dictionary
+
     if isinstance(query_str, str):
         print(f"Received query_str as string: {query_str}")
         try:
-            # Attempt to parse JSON string
             query_dict = json.loads(query_str)
             print(f"Parsed query_dict from string: {query_dict}")
         except json.JSONDecodeError as e:
-            # Handle invalid JSON format
             raise ValueError(f"Failed to parse JSON query string: {query_str}\nError: {e}")
     elif isinstance(query_str, dict):
         query_dict = query_str
         print(f"Received query_str as dict: {query_dict}")
     else:
         raise TypeError("query_str must be either a string or a dictionary.")
-    
-    # Convert string representations to actual ObjectId and datetime objects
+
+    # Convert values that look like ISO datetimes to Python datetime objects
+    # to allow $gte / $lte queries on date properly
     def convert_values(d):
         for key, value in d.items():
-            if isinstance(value, str) and value.startswith("ObjectId("):
-                # Extract the ObjectId string
-                oid_str = value[len("ObjectId("):-1].strip('"\'')
-                d[key] = ObjectId(oid_str)
-            elif isinstance(value, str):
-                try:
-                    # Attempt to parse datetime
-                    d[key] = date_parser.isoparse(value)
-                except ValueError:
-                    pass  # Keep as string if not a datetime
-            elif isinstance(value, dict):
+            if isinstance(value, dict):
                 convert_values(value)
             elif isinstance(value, list):
                 for item in value:
                     if isinstance(item, dict):
                         convert_values(item)
+            else:
+                if key == 'user' and isinstance(value, str):
+                    try:
+                        d[key] = ObjectId(value)
+                    except Exception as e:
+                        print(f"Error converting 'user' to ObjectId: {e}")
+                elif key == 'date' and isinstance(value, str):
+                    try:
+                        d[key] = date_parser.isoparse(value)
+                    except Exception as e:
+                        print(f"Error converting 'date' to datetime: {e}")
+                elif isinstance(value, str):
+                    try:
+                        d[key] = date_parser.isoparse(value)
+                    except ValueError:
+                        pass
         return d
 
     query_dict = convert_values(query_dict)
@@ -146,7 +167,7 @@ def Mongodb_tool(query_str: Union[str, dict]) -> list:
         raise ValueError("MONGO_URI not set in environment variables.")
 
     client = MongoClient(MONGO_URI)
-    db = client["test"]  # Replace with your actual DB name if different
+    db = client["mathew_data"]  # Replace with your actual DB name if different
     print(f"Connected to MongoDB database: {db.name}")
 
     # Execute the query in 'transactions' collection
@@ -172,75 +193,102 @@ tools_for_agent2 = [Mongodb_tool]
 
 def generate_query_str(state):
     """
-    Transforms the user's natural language query into a MongoDB query string.
-    Do not add anything before or after the generated query string. No explanation, no comments.
+    Transforms the user's natural language query into a MongoDB query dictionary for filtering transactions.
 
-    this is the schema of the mongodb which you need to provide query for
-    Database name
-    db = client["test"]
-    collection name
-    transactions_collection = db["transactions"]
-    An example data in collection
-    {'_id': ObjectId('6724a8eda60bd22124491321'), 'transactionId': 'txn_12y7PcsXyRmUKnD4ZduLKH', 'accountId': 'acct_12y7t4eqByajSUfUknm8rI', '__v': 0, 'amount': 43.51, 'bankAccountId': ObjectId('6724a851270a38bc33cbcf4f'), 'createdAt': datetime.datetime(2024, 11, 1, 10, 9, 49, 93000), 'currencyCode': 'USD', 'date': datetime.datetime(2024, 10, 31, 0, 0), 'description': 'Payment', 'entryType': 'CREDIT', 'isCustom': False, 'merchant': {'id': None, 'name': None}, 'status': 'POSTED', 'subCategory': None, 'transactionCategory': None, 'transactionType': None, 'updatedAt': datetime.datetime(2024, 11, 1, 10, 9, 49, 93000), 'user': ObjectId('6724a7ae270a38bc33cbcf2e')}
+    ### Purpose:
+    This tool generates MongoDB queries based on the user's input to retrieve data from the `transactions` collection in the `mathew_data` database. The query is designed to work with date ranges, transaction types, amounts, and merchant details as mentioned in the user's natural language query.
 
-    Make sure to filter data based on userid which is this in this data 'user': ObjectId('6724a7ae270a38bc33cbcf2e')} so that each user has only his data
+    ### Database and Collection Details:
+    - **Database Name**: `mathew_data`
+    - **Collection Name**: `transactions`
+    - **Example Document in the Collection**:
+        ```json
+        {
+            "_id": ObjectId("6772c9650ad791a776bdf2ee"),
+            "user": ObjectId("6724a7ae270a38bc33cbcf2e"),
+            "merchant": {
+                "id": "mch_12y7t59Rw4Yp5h6ZvLiTmR",
+                "name": "Fifth Third Bank"
+            },
+            "date": ISODate("2024-10-29T00:00:00Z"),
+            "description": "Mortgage Payment",
+            "entryType": "CREDIT",
+            "amount": 50.32
+        }
+        ```
 
+    ### Tool Behavior:
+    - The tool generates MongoDB queries as **Python dictionaries**.
+    - The generated query should include:
+      1. Filtering by date range using `$gte` and `$lte` for the `date` field.
+      2. Optional filters for `entryType`, `merchant.name`, or `amount` if mentioned in the user's query.
+      3. **Note:** The `user` field **should not** be included in the generated query, as it will be injected separately from the global variable `user_id_global`.
 
+    ### When to Call the Tool:
+    - Use this tool when the user queries for **transaction data** from the database. Examples include:
+        1. "What transactions were made between October 25, 2024, and October 26, 2024?"
+        2. "Show all debit transactions for my account in the last month."
+        3. "Get the total credit amount for my transactions in the last week."
+        4. "Find transactions with merchant name 'Fifth Third Bank' in October 2024."
+        5. "List all my transactions for 2024 with an amount greater than $100."
+
+    ### Examples of Generated Queries:
+    1. **Query for transactions between two dates:**
+        ```python
+        {
+            'date': {
+                '$gte': datetime.datetime(2024, 10, 25, 0, 0),
+                '$lte': datetime.datetime(2024, 10, 26, 0, 0)
+            }
+        }
+        ```
+    
+    2. **Query for transactions with a specific merchant name:**
+        ```python
+        {
+            'merchant.name': 'Fifth Third Bank'
+        }
+        ```
+    
+    3. **Query for debit transactions only:**
+        ```python
+        {
+            'entryType': 'DEBIT'
+        }
+        ```
+    
+    4. **Query for transactions above a certain amount:**
+        ```python
+        {
+            'amount': {'$gte': 100}
+        }
+        ```
+    
+    5. **Query combining date range and transaction type:**
+        ```python
+        {
+            'date': {
+                '$gte': datetime.datetime(2024, 10, 1, 0, 0),
+                '$lte': datetime.datetime(2024, 10, 31, 0, 0)
+            },
+            'entryType': 'CREDIT'
+        }
+        ```
+
+    ### Instructions for the Agent:
+    - **Input Interpretation:** Extract key details such as date ranges, transaction types (`CREDIT`/`DEBIT`), amount filters, and merchant names from the user's natural language query.
+    - **Output Format:** Always return a valid MongoDB query as a Python dictionary. **Do not** include the `user` field in the output.
+    - **Mandatory Field:** The `user` field will be automatically injected into the query from the global variable `user_id_global`. Do not attempt to include or modify it within the generated query.
+    
     Args:
-        state (messages): The current state, including user messages and config.
+        state (dict): The current conversation state, including user messages, previous tool invocations, and context.
     
     Returns:
-        dict: The updated state with the generated query string.
+        dict: A MongoDB query dictionary for filtering transactions.
     """
-#     print("---GENERATE QUERY STRING---")
-#     messages = state["messages"]
-#     user_query = messages[0].content
 
-#     # Extract user_id from config
-#     user_id = user_id_global
-#     print(f"Extracted user_id: {user_id}")
 
-#     # Define the prompt for query generation
-#     prompt = PromptTemplate(
-#         template="""Transforms the user's natural language query into a MongoDB query string.
-# Do not add anything before or after the generated query string. Do not include explanations or comments.
 
-# This is the schema of the MongoDB which you need to provide query for:
-# Database name: db = client["test"]
-# Collection name: transactions_collection = db["transactions"]
-# Example document in collection:
-# {{'_id': ObjectId('6724a8eda60bd22124491321'), 'transactionId': 'txn_12y7PcsXyRmUKnD4ZduLKH', 'accountId': 'acct_12y7t4eqByajSUfUknm8rI', '__v': 0, 'amount': 43.51, 'bankAccountId': ObjectId('6724a851270a38bc33cbcf4f'), 'createdAt': datetime.datetime(2024, 11, 1, 10, 9, 49, 93000), 'currencyCode': 'USD', 'date': datetime.datetime(2024, 10, 31, 0, 0), 'description': 'Payment', 'entryType': 'CREDIT', 'isCustom': False, 'merchant': {{'id': None, 'name': None}}, 'status': 'POSTED', 'subCategory': None, 'transactionCategory': None, 'transactionType': None, 'updatedAt': datetime.datetime(2024, 11, 1, 10, 9, 49, 93000), 'user': ObjectId('6724a7ae270a38bc33cbcf2e')}}
-
-# Make sure to include all necessary filters based on the user's request.
-
-# Example query:
-# query = {{
-#     "user": ObjectId("6724a7ae270a38bc33cbcf2e"),
-#     "date": {{
-#         "$gte": datetime.datetime(2024, 12, 1, 0, 0),
-#         "$lt": datetime.datetime(2025, 1, 1, 0, 0)
-#     }}
-# }}
-
-# User Question: {user_query}
-
-# Filter: {user_id}
-
-# MongoDB Query:
-# # Output only the query string. Do not include explanations, comments, or any additional text.
-# """,
-#         input_variables=["user_query", "user_id"],
-#     )
-
-#     # Chain
-#     query_chain = prompt | llm | StrOutputParser()
-
-#     # Generate the query string
-#     generated_query = query_chain.invoke({"user_query": user_query, "user_id": user_id})
-#     print(f"Generated MongoDB Query: {generated_query}")
-
-#     return {"messages": [AIMessage(content=generated_query)]}
-#     # return "mongodb_tool_node"
     print("---CALL AGENT 2 (generate_query_str)---")
     messages = state["messages"]
     model = llm.bind_tools(tools_for_agent2)  # Bind only Mongodb_tool
@@ -401,6 +449,10 @@ def generate(state):
     """
     Generate answer
 
+    do not add things like  I don't know more about its specific features or functions beyond this etc
+
+    always end with your sentence with Do you want to know anything else. 
+
     Args:
         state (messages): The current state
 
@@ -414,15 +466,29 @@ def generate(state):
 
     docs = last_message.content
 
+    print("TTTTTTTTTTTTTTTTTT ", docs)
+    print("YYYYYYYYYYYYYYYYYY ", question)
+
     # Prompt
-    prompt = hub.pull("rlm/rag-prompt")
+    # prompt = hub.pull("rlm/rag-prompt")
+
+    # print(prompt)
+
+    prompt = PromptTemplate(
+        template="""You are a helpfull AI assistant for the this book keeping app user can ask question about details like What is Ledger IQ?, is my account safe, How to use some feature of the app etc. You will have retrieved document and user question and based on that generate consice short to the point answer as you recieved from retreived documents and remember always at the end of the response AI should offer additional assistance or some other way to help.\n
+        and remember never end your sentence with i don't know that or etc. 
+        Here is the retrieved document: \n\n {docs} \n\n
+        Here is the user question: {question} \n
+        """,
+        input_variables=["docs", "question"],
+    )
 
 
     # Chain
     rag_chain = prompt | llm | StrOutputParser()
 
     # Run
-    response = rag_chain.invoke({"context": docs, "question": question})
+    response = rag_chain.invoke({"docs": docs, "question": question})
     return {"messages": [response]}
 
 
@@ -431,6 +497,22 @@ def generate(state):
 #     content: str
 
 def generate_finance_answer(state):
+    """
+    generate_finance_answer
+    -----------------------
+    **Purpose**:
+      - After Mongodb_tool returns transaction data, 
+        the LLM uses the user's original question to figure out what calculations or summary to produce.
+
+    **Flow**:
+      1. We have the user's question (e.g., "Sum my total transactions between 10/25 and 10/26").
+      2. We have the data from MongoDB (list of matching docs).
+      3. LLM is prompted to do any necessary calculations (like summation) 
+         and produce a short, direct answer.
+
+    **Return**:
+      - A single AIMessage with the final numeric or textual answer (e.g. "The total amount is $129").
+    """
     print("---GENERATE FINANCE INFO---")
     messages = state["messages"]
     
