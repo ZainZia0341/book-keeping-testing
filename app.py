@@ -51,15 +51,29 @@ os.environ["LANGCHAIN_API_KEY"] = os.environ.get("LANGCHAIN_API_KEY")
 os.environ["GOOGLE_API_KEY"] = os.environ.get("GOOGLE_API_KEY")
 DB_URI = os.environ.get("Postgres_sql_URL") 
 MONGO_URI = os.environ.get("MONGODB_URI")
+BEDROCK_CREDENTIALS_PROFILE_NAME = os.getenv("BEDROCK_CREDENTIALS_PROFILE_NAME", "default")
 
-from langchain_groq import ChatGroq
+# from langchain_groq import ChatGroq
 
-llm = ChatGroq(
-    model="llama-3.3-70b-specdec", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
-    groq_api_key=os.environ.get("GROQ_API_KEY"),
-    temperature=0,
-    max_tokens=None,
-)
+# llm = ChatGroq(
+#     model="llama-3.3-70b-specdec", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
+#     groq_api_key=os.environ.get("GROQ_API_KEY"),
+#     temperature=0,
+#     max_tokens=None,
+# )
+
+from langchain_aws import ChatBedrock
+# from langchain.llms.bedrock import Bedrock
+# from langchain_community.chat_models import BedrockChat
+
+llm = ChatBedrock(
+        model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
+        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+        region = "us-east-1",
+        model_kwargs = {
+        "temperature": 0,
+    }
+    )
 
 # Initialize LLM
 # llm = ChatGoogleGenerativeAI(
@@ -68,15 +82,23 @@ llm = ChatGroq(
 #     max_tokens=None,
 # )
 
-retriever = get_pinecone_index()
+from mongodb_reuse import get_mongodb_vector_store
+
+# retriever = get_pinecone_index()
 # retriever = get_chromadb_index()
+vector_store = get_mongodb_vector_store()
+
+retriever = vector_store.as_retriever(
+    search_type="similarity_score_threshold",
+    search_kwargs={"k": 2, "score_threshold": 0.2},
+)
 
 # Define a global variable for user_id
 user_id_global = ""
 
 # Create the retriever tool
 retriever_tool = create_retriever_tool(
-        retriever.as_retriever(),
+        retriever,
         name="LedgerIQ_FAQs",
         description="This tool retrieves answers from the Ledger IQ FAQ dataset. It is used to handle questions about the app's features, functionality, usage instructions, and company details. Example queries include: 'How do I fix a transaction error in Ledger IQ?' and 'How do I handle personal expenses in Ledger IQ?'"
 )
@@ -278,6 +300,7 @@ def agent(state):
     model = model.bind_tools(tools)
     response = model.invoke(messages)
     # We return a list, because this will get added to the existing list
+    print("GGGGGGGGGGGGGGGGGGGGGGG ", response)
     return {"messages": [response]}
 
 
