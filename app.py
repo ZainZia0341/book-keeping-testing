@@ -490,7 +490,8 @@ def custom_condition(state):
     ]
     general_keywords = [
         "hello", "hi", "hey", "whatsup", "what's up", "how are you",
-        "write a poem", "tell me a joke", "good morning", "good evening"
+        "write a poem", "tell me a joke", "good morning", "good evening", "sing",
+        "sung", "song", "joke", "love", "remance", "sports", "game"
     ]
     if any(keyword in question for keyword in general_keywords):
         print("Routing to general_questions_node based on general keywords.")
