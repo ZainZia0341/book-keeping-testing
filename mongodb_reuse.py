@@ -11,14 +11,13 @@ from langchain_aws import BedrockEmbeddings
 load_dotenv()
 
 # Setting Environment Variables
-MONGODB_ATLAS_CLUSTER_URI = os.getenv("MONGODB_ATLAS_CLUSTER_URI")
-DB_NAME = "langchain_test_db"
-COLLECTION_NAME = "langchain_test_vectorstores"
-ATLAS_VECTOR_SEARCH_INDEX_NAME = os.getenv("INDEX_NAME", "langchain-test-index-vectorstores")
-
-ATLAS_VECTOR_SEARCH_INDEX_NAME = "langchain-test-index-vectorstores"
+MONGODB_ATLAS_CLUSTER_URI = os.environ.get("MONGODB_ATLAS_CLUSTER_URI")
+COLLECTION_NAME = "vectorSearch"
+DB_NAME = "bedrock"
+ATLAS_VECTOR_SEARCH_INDEX_NAME = "vector_db_index"
 
 BEDROCK_CREDENTIALS_PROFILE_NAME = os.getenv("BEDROCK_CREDENTIALS_PROFILE_NAME", "default")
+
 BEDROCK_REGION_NAME = os.getenv("BEDROCK_REGION_NAME", "us-east-1")
 
 def get_embedding_model():

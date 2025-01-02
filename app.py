@@ -25,6 +25,7 @@ from dateutil import parser as date_parser
 from pymongo import MongoClient
 from bson import ObjectId
 import json
+import time
 # import datetime
 # import ast
 
@@ -53,27 +54,27 @@ DB_URI = os.environ.get("Postgres_sql_URL")
 MONGO_URI = os.environ.get("MONGODB_URI")
 BEDROCK_CREDENTIALS_PROFILE_NAME = os.getenv("BEDROCK_CREDENTIALS_PROFILE_NAME", "default")
 
-# from langchain_groq import ChatGroq
+from langchain_groq import ChatGroq
 
-# llm = ChatGroq(
-#     model="llama-3.3-70b-specdec", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
-#     groq_api_key=os.environ.get("GROQ_API_KEY"),
-#     temperature=0,
-#     max_tokens=None,
-# )
+llm = ChatGroq(
+    model="llama-3.3-70b-specdec", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
+    groq_api_key=os.environ.get("GROQ_API_KEY"),
+    temperature=0,
+    max_tokens=None,
+)
 
-from langchain_aws import ChatBedrock
+# from langchain_aws import ChatBedrock
 # from langchain.llms.bedrock import Bedrock
 # from langchain_community.chat_models import BedrockChat
 
-main_agent_llm = ChatBedrock(
-        model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
-        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
-        region = "us-east-1",
-        model_kwargs = {
-        "temperature": 0,
-    }
-    )
+# main_agent_llm = ChatBedrock(
+#         model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
+#         credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+#         region = "us-east-1",
+#         model_kwargs = {
+#         "temperature": 0,
+#     }
+#     )
 
 # Initialize LLM
 # llm = ChatGoogleGenerativeAI(
@@ -88,9 +89,17 @@ from mongodb_reuse import get_mongodb_vector_store
 # retriever = get_chromadb_index()
 vector_store = get_mongodb_vector_store()
 
+from pprint import pprint
+
+# Assuming `retriever` is the MongoDBAtlasVectorSearch object
+pprint(vars(vector_store))
+
+print("MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM ", vector_store)
+
+
 retriever = vector_store.as_retriever(
     search_type="similarity_score_threshold",
-    search_kwargs={"score_threshold": 0.9},
+    search_kwargs={"score_threshold": 0.2},
 )
 
 
@@ -253,16 +262,16 @@ def generate_query_str(state):
         dict: A MongoDB query dictionary for filtering transactions.
     """
 
-    llm_query_generator = ChatBedrock(
-        model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
-        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
-        region = "us-east-1",
-        model_kwargs = {
-        "temperature": 0,
-    }
-    )
+    # llm_query_generator = ChatBedrock(
+    #     model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
+    #     credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+    #     region = "us-east-1",
+    #     model_kwargs = {
+    #     "temperature": 0,
+    # }
+    # )
 
-    llm = llm_query_generator
+    # llm = llm_query_generator
 
     print("---CALL (generate_query_str) Node---")
     messages = state["messages"]
@@ -307,9 +316,11 @@ def agent(state):
     print("---CALL AGENT---")
     messages = state["messages"]
     print(f"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ", messages)
-    model = main_agent_llm
+    # model = main_agent_llm
+    model = llm
     model = model.bind_tools(tools)
     response = model.invoke(messages)
+    # time.sleep(3)
     # We return a list, because this will get added to the existing list
     print("GGGGGGGGGGGGGGGGGGGGGGG ", response)
     return {"messages": [response]}
@@ -334,21 +345,22 @@ def generate(state):
         input_variables=["docs", "question"],
     )
 
-    llm_generate  = ChatBedrock(
-        model_id="amazon.titan-text-premier-v1:0",  # Replace with your specific model ID
-        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
-        region = "us-east-1",
-        model_kwargs = {
-        "temperature": 0,
-    }
-    )
+    # llm_generate  = ChatBedrock(
+    #     model_id="amazon.titan-text-premier-v1:0",  # Replace with your specific model ID
+    #     credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+    #     region = "us-east-1",
+    #     model_kwargs = {
+    #     "temperature": 0,
+    # }
+    # )
 
-    llm = llm_generate
+    # llm = llm_generate
 
     # Chain
     rag_chain = prompt | llm | StrOutputParser()
 
     # Run
+    # time.sleep(3)
     response = rag_chain.invoke({"docs": docs, "question": question})
     return {"messages": [response]}
 
@@ -425,16 +437,16 @@ def generate_finance_answer(state):
         input_variables=["user_question", "financial_data"]
     )
 
-    financial_llm = ChatBedrock(
-        model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
-        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
-        region = "us-east-1",
-        model_kwargs = {
-        "temperature": 0,
-    }
-    )
+    # financial_llm = ChatBedrock(
+    #     model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
+    #     credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+    #     region = "us-east-1",
+    #     model_kwargs = {
+    #     "temperature": 0,
+    # }
+    # )
 
-    llm = financial_llm
+    # llm = financial_llm
 
     # Chain the prompt with the LLM and output parser
     query_chain = prompt | llm | StrOutputParser()
@@ -529,16 +541,16 @@ def general_questions_node(state) -> dict:
         input_variables=["user_message"]
     )
 
-    llm_general_case  = ChatBedrock(
-        model_id="anthropic.claude-3-5-haiku-20241022-v1:0",  # Replace with your specific model ID
-        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
-        region = "us-east-1",
-        model_kwargs = {
-        "temperature": 0,
-    }
-    )
+    # llm_general_case  = ChatBedrock(
+    #     model_id="anthropic.claude-3-5-haiku-20241022-v1:0",  # Replace with your specific model ID
+    #     credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+    #     region = "us-east-1",
+    #     model_kwargs = {
+    #     "temperature": 0,
+    # }
+    # )
 
-    llm = llm_general_case
+    # llm = llm_general_case
     
     
     # Chain the prompt with the LLM and output parser

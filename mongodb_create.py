@@ -7,29 +7,41 @@ from dotenv import load_dotenv
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
+from mongodb_reuse import get_mongodb_vector_store, get_embedding_model
+from pymongo import MongoClient
+MONGODB_ATLAS_CLUSTER_URI = os.environ.get("MONGODB_ATLAS_CLUSTER_URI")
 
-from mongodb_reuse import get_mongodb_vector_store
+COLLECTION_NAME = "vectorSearch"
+DB_NAME = "bedrock"
+
+client = MongoClient(MONGODB_ATLAS_CLUSTER_URI)
+    
+MONGODB_COLLECTION = client[DB_NAME][COLLECTION_NAME]
+
+
+
 
 # Load environment variables from .env file
 load_dotenv()
 
-def create_mongodb_vector_search_index(vector_store):
-    """
-    Create a vector search index on the MongoDB collection if it doesn't already exist.
-    """
-    try:
-        # Retrieve existing indexes
-        existing_indexes = vector_store.collection.index_information()
+# def create_mongodb_vector_search_index(vector_store):
+#     """
+#     Create a vector search index on the MongoDB collection if it doesn't already exist.
+#     """
+#     try:
+#         # Retrieve existing indexes
+#         existing_indexes = vector_store.collection.index_information()
         
-        # Check if the desired index already exists
-        if vector_store.index_name in existing_indexes:
-            print(f"Index '{vector_store.index_name}' already exists. Skipping creation.")
-        else:
-            # Create the index if it does not exist
-            vector_store.create_vector_search_index(dimensions=1536)
-            print(f"Index '{vector_store.index_name}' created successfully.")
-    except Exception as e:
-        print(f"Error during index creation: {e}")
+#         # Check if the desired index already exists
+#         if vector_store.index_name in existing_indexes:
+#             print(f"Index '{vector_store.index_name}' already exists. Skipping creation.")
+#         else:
+#             # Create the index if it does not exist
+#             vector_store.create_vector_search_index(dimensions=1536)
+#             print(f"Index '{vector_store.index_name}' created successfully.")
+#     except Exception as e:
+#         print(f"Error during index creation: {e}")
 
 def create_chunks_document(pdf_path):
     """
@@ -46,7 +58,7 @@ def create_chunks_document(pdf_path):
         print(f"Error loading or splitting documents: {e}")
         return []
 
-def put_documents_into_index(vector_store, pdf_path="./book-keeping.pdf"):
+def put_documents_into_index(pdf_path="./book-keeping.pdf"):
     """
     Embed and add documents to the MongoDB vector store.
     """
@@ -56,19 +68,20 @@ def put_documents_into_index(vector_store, pdf_path="./book-keeping.pdf"):
         return
 
     try:
-        uuids = [str(uuid.uuid4()) for _ in range(len(documents))]
-        vector_store.add_documents(documents=documents, ids=uuids)
-        print(f"Added {len(documents)} documents to the vector store.")
+        emb_model = get_embedding_model()
+        vector_search = MongoDBAtlasVectorSearch.from_documents(
+            documents=documents,
+            embedding=emb_model,
+            collection=MONGODB_COLLECTION,
+            index_name="vector_db_index"  # Use a predefined index name
+        )
+        return vector_search
     except Exception as e:
         print(f"Error adding documents to the vector store: {e}")
 
 def main():
-    vector_store = get_mongodb_vector_store()
-    
-    # Create vector search index if it doesn't exist
-    create_mongodb_vector_search_index(vector_store)
-    
     # Ingest documents
-    put_documents_into_index(vector_store)
+    put_documents_into_index()
+
 if __name__ == "__main__":
     main()
