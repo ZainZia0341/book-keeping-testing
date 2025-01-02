@@ -40,7 +40,7 @@ from sqlalchemy.exc import OperationalError
 load_dotenv()
 
 # file import
-# from pinecone_reuse import get_pinecone_index
+from pinecone_reuse import get_pinecone_index
 
 # from chromadb_reuse import get_chromadb_index
 
@@ -57,7 +57,7 @@ BEDROCK_CREDENTIALS_PROFILE_NAME = os.getenv("BEDROCK_CREDENTIALS_PROFILE_NAME",
 from langchain_groq import ChatGroq
 
 llm = ChatGroq(
-    model="llama-3.3-70b-specdec", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
+    model="llama-3.1-70b-versatile", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
     groq_api_key=os.environ.get("GROQ_API_KEY"),
     temperature=0,
     max_tokens=None,
@@ -83,24 +83,24 @@ llm = ChatGroq(
 #     max_tokens=None,
 # )
 
-from mongodb_reuse import get_mongodb_vector_store
+# from mongodb_reuse import get_mongodb_vector_store
 
-# retriever = get_pinecone_index()
+retriever = get_pinecone_index()
 # retriever = get_chromadb_index()
-vector_store = get_mongodb_vector_store()
+# vector_store = get_mongodb_vector_store()
 
-from pprint import pprint
+# from pprint import pprint
 
-# Assuming `retriever` is the MongoDBAtlasVectorSearch object
-pprint(vars(vector_store))
+# # Assuming `retriever` is the MongoDBAtlasVectorSearch object
+# pprint(vars(vector_store))
 
-print("MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM ", vector_store)
+# print("MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM ", vector_store)
 
 
-retriever = vector_store.as_retriever(
-    search_type="similarity_score_threshold",
-    search_kwargs={"score_threshold": 0.2},
-)
+# retriever = vector_store.as_retriever(
+#     search_type="similarity_score_threshold",
+#     search_kwargs={"score_threshold": 0.2},
+# )
 
 
 
@@ -109,7 +109,7 @@ user_id_global = ""
 
 # Create the retriever tool
 retriever_tool = create_retriever_tool(
-        retriever,
+        retriever.as_retriever(),
         name="LedgerIQ_FAQs",
         description="This tool retrieves answers from the Ledger IQ FAQ dataset. It is used to handle questions about the app's features, functionality, usage instructions, and company details. Example queries include: 'How do I fix a transaction error in Ledger IQ?' and 'How do I handle personal expenses in Ledger IQ?'"
 )
@@ -329,11 +329,14 @@ def agent(state):
 def generate(state):
     print("---GENERATE---")
     messages = state["messages"]
-    question = messages[0].content
+    # question = messages[0].content
     last_message = messages[-1]
-
     docs = last_message.content
-
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_human_message = msg
+            break  # Stop as soon as we find the last HumanMessage
+    question = last_human_message.content
     print("TTTTTTTTTTTTTTTTTT ", docs)
     print("YYYYYYYYYYYYYYYYYY ", question)
     print("UUUUUUUUUUUUUUUUUUUUUUU", retriever)
@@ -471,7 +474,13 @@ def custom_condition(state):
     Routes to 'generate_query_str' for personal finance queries,
     and 'retrieve' for company information queries.
     """
-    question = state["messages"][0].content.lower()
+    messages = state["messages"]
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_human_message = msg
+            break  # Stop as soon as we find the last HumanMessage
+    question = last_human_message.content.lower()
+    print("BBBBBBBBBBBBBBBBBBBBB ", question)
     finance_keywords = [
         "my account", "transactions", "credited", "debits",
         "balance", "profit", "loss", "budget", "income", 

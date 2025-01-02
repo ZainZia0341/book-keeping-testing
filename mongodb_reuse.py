@@ -14,7 +14,7 @@ load_dotenv()
 MONGODB_ATLAS_CLUSTER_URI = os.environ.get("MONGODB_ATLAS_CLUSTER_URI")
 COLLECTION_NAME = "vectorSearch"
 DB_NAME = "bedrock"
-ATLAS_VECTOR_SEARCH_INDEX_NAME = "vector_db_index"
+ATLAS_VECTOR_SEARCH_INDEX_NAME = "vector_search_index"  # "vector_db_index"
 
 BEDROCK_CREDENTIALS_PROFILE_NAME = os.getenv("BEDROCK_CREDENTIALS_PROFILE_NAME", "default")
 
