@@ -39,7 +39,7 @@ from sqlalchemy.exc import OperationalError
 load_dotenv()
 
 # file import
-from pinecone_reuse import get_pinecone_index
+# from pinecone_reuse import get_pinecone_index
 
 # from chromadb_reuse import get_chromadb_index
 
@@ -66,7 +66,7 @@ from langchain_aws import ChatBedrock
 # from langchain.llms.bedrock import Bedrock
 # from langchain_community.chat_models import BedrockChat
 
-llm = ChatBedrock(
+main_agent_llm = ChatBedrock(
         model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
         credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
         region = "us-east-1",
@@ -90,8 +90,10 @@ vector_store = get_mongodb_vector_store()
 
 retriever = vector_store.as_retriever(
     search_type="similarity_score_threshold",
-    search_kwargs={"k": 2, "score_threshold": 0.2},
+    search_kwargs={"score_threshold": 0.9},
 )
+
+
 
 # Define a global variable for user_id
 user_id_global = ""
@@ -251,7 +253,16 @@ def generate_query_str(state):
         dict: A MongoDB query dictionary for filtering transactions.
     """
 
+    llm_query_generator = ChatBedrock(
+        model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
+        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+        region = "us-east-1",
+        model_kwargs = {
+        "temperature": 0,
+    }
+    )
 
+    llm = llm_query_generator
 
     print("---CALL (generate_query_str) Node---")
     messages = state["messages"]
@@ -296,7 +307,7 @@ def agent(state):
     print("---CALL AGENT---")
     messages = state["messages"]
     print(f"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ", messages)
-    model = llm
+    model = main_agent_llm
     model = model.bind_tools(tools)
     response = model.invoke(messages)
     # We return a list, because this will get added to the existing list
@@ -314,7 +325,7 @@ def generate(state):
 
     print("TTTTTTTTTTTTTTTTTT ", docs)
     print("YYYYYYYYYYYYYYYYYY ", question)
-
+    print("UUUUUUUUUUUUUUUUUUUUUUU", retriever)
     prompt = PromptTemplate(
         template="""The AI should provide conversational and engaging responses, answering user questions clearly and encouraging further dialogue. At the end of each response, it should offer additional assistance or suggest ways to help. Avoid using phrases like 'I don't know' or 'I only know this according to my database.'
         Here is the retrieved document: \n\n {docs} \n\n
@@ -323,6 +334,16 @@ def generate(state):
         input_variables=["docs", "question"],
     )
 
+    llm_generate  = ChatBedrock(
+        model_id="amazon.titan-text-premier-v1:0",  # Replace with your specific model ID
+        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+        region = "us-east-1",
+        model_kwargs = {
+        "temperature": 0,
+    }
+    )
+
+    llm = llm_generate
 
     # Chain
     rag_chain = prompt | llm | StrOutputParser()
@@ -403,6 +424,17 @@ def generate_finance_answer(state):
         template=llm_prompt,
         input_variables=["user_question", "financial_data"]
     )
+
+    financial_llm = ChatBedrock(
+        model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
+        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+        region = "us-east-1",
+        model_kwargs = {
+        "temperature": 0,
+    }
+    )
+
+    llm = financial_llm
 
     # Chain the prompt with the LLM and output parser
     query_chain = prompt | llm | StrOutputParser()
@@ -496,6 +528,18 @@ def general_questions_node(state) -> dict:
         """,
         input_variables=["user_message"]
     )
+
+    llm_general_case  = ChatBedrock(
+        model_id="anthropic.claude-3-5-haiku-20241022-v1:0",  # Replace with your specific model ID
+        credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+        region = "us-east-1",
+        model_kwargs = {
+        "temperature": 0,
+    }
+    )
+
+    llm = llm_general_case
+    
     
     # Chain the prompt with the LLM and output parser
     response_chain = prompt | llm | StrOutputParser()
