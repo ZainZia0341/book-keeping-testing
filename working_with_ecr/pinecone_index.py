@@ -7,7 +7,7 @@ load_dotenv()
 
 os.environ["PINECONE_API_KEY"] = os.getenv("PINECONE_API_KEY")
 
-os.environ["GOOGLE_API_KEY"] = "AIzaSyCcpedjOSxsuXVsEwJpvgeZfYwraBOZH3Y" #  os.environ.get("GOOGLE_API_KEY")
+os.environ["GOOGLE_API_KEY"] =  #  os.environ.get("GOOGLE_API_KEY")
 
 # Step 4: Initialize the embedding model
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")

@@ -2,7 +2,15 @@
 
 lambda-layer
 
+env
+
+__pycache__/*
+
+venv
+
 mathew_ENV_3.9.0
+
+chroma_db
 
 node_modules
 
@@ -11,3 +19,6 @@ node_modules
 dummy_data.pdf
 
 database_data.json
+
+GeeksVisor_Info.pdf
+
