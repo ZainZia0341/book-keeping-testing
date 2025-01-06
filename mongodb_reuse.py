@@ -12,9 +12,9 @@ load_dotenv()
 
 # Setting Environment Variables
 MONGODB_ATLAS_CLUSTER_URI = os.environ.get("MONGODB_ATLAS_CLUSTER_URI")
-COLLECTION_NAME = "vectorSearch"
-DB_NAME = "bedrock"
-ATLAS_VECTOR_SEARCH_INDEX_NAME = "vector_search_index"  # "vector_db_index"
+COLLECTION_NAME = "langchain_test_vectorstores"
+DB_NAME = "langchain_test_db"
+ATLAS_VECTOR_SEARCH_INDEX_NAME = "vector_index"  # "vector_db_index"
 
 BEDROCK_CREDENTIALS_PROFILE_NAME = os.getenv("BEDROCK_CREDENTIALS_PROFILE_NAME", "default")
 

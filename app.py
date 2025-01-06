@@ -40,7 +40,7 @@ from sqlalchemy.exc import OperationalError
 load_dotenv()
 
 # file import
-from pinecone_reuse import get_pinecone_index
+# from pinecone_reuse import get_pinecone_index
 
 # from chromadb_reuse import get_chromadb_index
 
@@ -83,26 +83,11 @@ llm = ChatGroq(
 #     max_tokens=None,
 # )
 
-# from mongodb_reuse import get_mongodb_vector_store
+from mongodb_reuse import get_mongodb_vector_store
 
-retriever = get_pinecone_index()
+# retriever = get_pinecone_index()
 # retriever = get_chromadb_index()
-# vector_store = get_mongodb_vector_store()
-
-# from pprint import pprint
-
-# # Assuming `retriever` is the MongoDBAtlasVectorSearch object
-# pprint(vars(vector_store))
-
-# print("MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM ", vector_store)
-
-
-# retriever = vector_store.as_retriever(
-#     search_type="similarity_score_threshold",
-#     search_kwargs={"score_threshold": 0.2},
-# )
-
-
+retriever = get_mongodb_vector_store()
 
 # Define a global variable for user_id
 user_id_global = ""
@@ -204,12 +189,96 @@ def Mongodb_tool(query_str: Union[str, dict]) -> list:
     # Return the documents
     return results
 
-tools = [retriever_tool]
+tools = [retriever_tool, Mongodb_tool]
 
-tools_for_agent2 = [Mongodb_tool]
 
-def generate_query_str(MessagesState):
+# def generate_query_str(MessagesState):
+#     """
+#     This tool converts the user's natural language query into a MongoDB query dictionary for retrieving transaction data. It ensures accurate queries aligned with the database structure and content.
+
+#     Purpose:
+#     Generates MongoDB queries as Python dictionaries for filtering data from the transactions collection in the mathew_data database.
+#     Handles date ranges, transaction types (CREDIT/DEBIT), amounts, and merchant details.
+#     Note: The user field is injected separately from the global variable user_id_global and should not be included in the generated query.
+
+#     Example Database Document:
+#     json
+#     {
+#         "_id": ObjectId("6772c9650ad791a776bdf2ee"),
+#         "user": ObjectId("6724a7ae270a38bc33cbcf2e"),
+#         "merchant": {
+#             "id": "mch_12y7t59Rw4Yp5h6ZvLiTmR",
+#             "name": "Fifth Third Bank"
+#         },
+#         "date": ISODate("2024-10-29T00:00:00Z"),
+#         "description": "Mortgage Payment",
+#         "entryType": "CREDIT",
+#         "amount": 50.32
+#     }
+
+#     When to Use:
+#     Use this tool for transaction-related queries, such as retrieving data, identifying trends, or performing financial calculations. Example queries include:
+
+#     What transactions were made between October 1, 2024, and October 31, 2024?
+#     Generated Query:
+#     {
+#         "date": {
+#             "$gte": datetime.datetime(2024, 10, 1, 0, 0),
+#             "$lte": datetime.datetime(2024, 10, 31, 0, 0)
+#         }
+#     }
+
+#     List all debit transactions above $500 in 2024.
+#     Generated Query:
+#     {
+#         "date": {
+#             "$gte": datetime.datetime(2024, 1, 1, 0, 0),
+#             "$lte": datetime.datetime(2024, 12, 31, 0, 0)
+#         },
+#         "entryType": "DEBIT",
+#         "amount": {"$gte": 500}
+#     }
+    
+#     Args:
+#         state (dict): The current conversation state, including user messages, previous tool invocations, and context.
+    
+#     Returns:
+#         dict: A MongoDB query dictionary for filtering transactions.
+#     """
+
+    # llm_query_generator = ChatBedrock(
+    #     model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
+    #     credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
+    #     region = "us-east-1",
+    #     model_kwargs = {
+    #     "temperature": 0,
+    # }
+    # )
+
+    # llm = llm_query_generator
+
+    # print("---CALL (generate_query_str) Node---")
+    # messages = MessagesState["messages"]
+    # model = llm.bind_tools(tools_for_agent2)  # Bind only Mongodb_tool
+    # try:
+    #     response = model.invoke(messages)
+    # except Exception as e:
+    #     print(f"Error adding documents to the vector store: {e}")
+    #     return print(f"{e}")
+    # return {"messages": [response]}
+
+
+
+def agent(MessagesState):
     """
+    1. LedgerIQ_FAQs tool
+        When to Use:
+        Use this tool for questions about Ledger IQ's features, functionality, or company-related information. It retrieves answers from a predefined FAQ dataset.
+        Example Questions:
+        What is Ledger IQ?
+        How do I send an invoice with Ledger IQ?
+
+    2. (Mongodb_tool) tool
     This tool converts the user's natural language query into a MongoDB query dictionary for retrieving transaction data. It ensures accurate queries aligned with the database structure and content.
 
     Purpose:
@@ -254,53 +323,6 @@ def generate_query_str(MessagesState):
         "entryType": "DEBIT",
         "amount": {"$gte": 500}
     }
-    
-    Args:
-        state (dict): The current conversation state, including user messages, previous tool invocations, and context.
-    
-    Returns:
-        dict: A MongoDB query dictionary for filtering transactions.
-    """
-
-    # llm_query_generator = ChatBedrock(
-    #     model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",  # Replace with your specific model ID
-    #     credentials_profile_name=BEDROCK_CREDENTIALS_PROFILE_NAME,
-    #     region = "us-east-1",
-    #     model_kwargs = {
-    #     "temperature": 0,
-    # }
-    # )
-
-    # llm = llm_query_generator
-
-    print("---CALL (generate_query_str) Node---")
-    messages = MessagesState["messages"]
-    model = llm.bind_tools(tools_for_agent2)  # Bind only Mongodb_tool
-    response = model.invoke(messages)
-    return {"messages": [response]}
-
-
-
-# class AgentState(TypedDict, total=False):
-#     messages: Annotated[Sequence[BaseMessage], add_messages]
-
-
-
-def agent(MessagesState):
-    """
-    1. LedgerIQ_FAQs tool
-        When to Use:
-        Use this tool for questions about Ledger IQ's features, functionality, or company-related information. It retrieves answers from a predefined FAQ dataset.
-        Example Questions:
-        What is Ledger IQ?
-        How do I send an invoice with Ledger IQ?
-
-    2. (generate_query_str) Query Generator Node 
-        When to Use:
-        Use this node for financial data queries that require constructing a MongoDB query. The user's question will typically involve financial analysis, trends, or calculations, such as revenue, expenses, profit margins, ROI, or budgeting.
-        Example Questions:
-        How profitable is my company this quarter compared to last quarter?
-        What is the total revenue and expenses for the last six months?
 
     3. If no tool is used and question is general thing like hello, hi, sing a song, write a poem, give suggestions on sports, movie, game or any in general things then do not use any tool and answer on your owns.
         remember these points when answering directly
@@ -477,11 +499,10 @@ workflow = StateGraph(MessagesState)
 
 # Define the nodes we will cycle between
 workflow.add_node("agent", agent)  # agent
-retrieve_node = ToolNode([retriever_tool])
+retrieve_node = ToolNode(tools)
 workflow.add_node("retrieve", retrieve_node)  # retrieval
 mongodb_tool = ToolNode([Mongodb_tool])
 workflow.add_node("mongodb_tool_node", mongodb_tool)
-workflow.add_node("generate_query_str", generate_query_str)  # Generates query_str
 workflow.add_node("generate", generate)  # Generating a response after we know the documents are relevant
 workflow.add_node("generate_finance_answer", generate_finance_answer)  # Generating a response after we know the documents are relevant
 # Call agent node to decide to retrieve or not
@@ -493,17 +514,14 @@ workflow.add_conditional_edges(
     # Assess agent decision
     tools_condition,
     {
-        # Translate the condition outputs to nodes in our graph
-        "generate_query_str": "generate_query_str",
-        "tools": "retrieve",
-        "__end__": "generate_query_str"
-    },
+        "LedgerIQ_FAQs": "generate"
+        "Mongodb_tool": END
+    }
 )
 
 
 
 # Update edges for MongoDB path
-workflow.add_edge("generate_query_str", "mongodb_tool_node")  # After routing to MongoDB tool 
 workflow.add_edge("retrieve", "generate")
 workflow.add_edge("generate", END)                     # After generating response, end
 workflow.add_edge("mongodb_tool_node", "generate_finance_answer")

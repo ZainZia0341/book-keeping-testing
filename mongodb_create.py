@@ -12,8 +12,8 @@ from mongodb_reuse import get_mongodb_vector_store, get_embedding_model
 from pymongo import MongoClient
 MONGODB_ATLAS_CLUSTER_URI = os.environ.get("MONGODB_ATLAS_CLUSTER_URI")
 
-COLLECTION_NAME = "vectorSearch"
-DB_NAME = "bedrock"
+COLLECTION_NAME = "langchain_test_vectorstores"
+DB_NAME = "langchain_test_db"
 
 client = MongoClient(MONGODB_ATLAS_CLUSTER_URI)
     
@@ -24,24 +24,6 @@ MONGODB_COLLECTION = client[DB_NAME][COLLECTION_NAME]
 
 # Load environment variables from .env file
 load_dotenv()
-
-# def create_mongodb_vector_search_index(vector_store):
-#     """
-#     Create a vector search index on the MongoDB collection if it doesn't already exist.
-#     """
-#     try:
-#         # Retrieve existing indexes
-#         existing_indexes = vector_store.collection.index_information()
-        
-#         # Check if the desired index already exists
-#         if vector_store.index_name in existing_indexes:
-#             print(f"Index '{vector_store.index_name}' already exists. Skipping creation.")
-#         else:
-#             # Create the index if it does not exist
-#             vector_store.create_vector_search_index(dimensions=1536)
-#             print(f"Index '{vector_store.index_name}' created successfully.")
-#     except Exception as e:
-#         print(f"Error during index creation: {e}")
 
 def create_chunks_document(pdf_path):
     """
@@ -73,7 +55,7 @@ def put_documents_into_index(pdf_path="./book-keeping.pdf"):
             documents=documents,
             embedding=emb_model,
             collection=MONGODB_COLLECTION,
-            index_name="vector_db_index"  # Use a predefined index name
+            index_name="vector_index"  # Use a predefined index name
         )
         return vector_search
     except Exception as e:
