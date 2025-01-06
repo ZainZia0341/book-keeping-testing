@@ -491,6 +491,31 @@ def generate_finance_answer(MessagesState):
     
     return {"messages": [AIMessage(content=generated_report)]}
 
+def check_last_tool(MessagesState: Dict[str, Any]) -> str:
+    """
+    Determines the next node based on the last tool called.
+
+    Args:
+        state (dict): The current state of the graph.
+
+    Returns:
+        str: The name of the next node to invoke.
+    """
+
+    print("TTTTTTTTTTTTT ", MessagesState)
+    tool_calls = MessagesState.get('tool_calls', [])
+    if not tool_calls:
+        return "END"  # No tools called yet; end the workflow.
+
+    last_tool_call = tool_calls[-1]
+    last_tool_name = last_tool_call.get('name', '')
+
+    if last_tool_name == 'LedgerIQ_FAQs':
+        return "generate"
+    elif last_tool_name == 'Mongodb_tool':
+        return "generate_finance_answer"
+    else:
+        return "END"  # Unknown tool; end the workflow.
 
 
 
@@ -500,11 +525,10 @@ workflow = StateGraph(MessagesState)
 # Define the nodes we will cycle between
 workflow.add_node("agent", agent)  # agent
 retrieve_node = ToolNode(tools)
-workflow.add_node("retrieve", retrieve_node)  # retrieval
-mongodb_tool = ToolNode([Mongodb_tool])
-workflow.add_node("mongodb_tool_node", mongodb_tool)
-workflow.add_node("generate", generate)  # Generating a response after we know the documents are relevant
-workflow.add_node("generate_finance_answer", generate_finance_answer)  # Generating a response after we know the documents are relevant
+workflow.add_node("tools", retrieve_node)
+workflow.add_node("generate", generate)
+workflow.add_node("generate_finance_answer", generate_finance_answer)  # retrieval
+  # Generating a response after we know the documents are relevant
 # Call agent node to decide to retrieve or not
 workflow.add_edge(START, "agent")
 
@@ -512,20 +536,28 @@ workflow.add_edge(START, "agent")
 workflow.add_conditional_edges(
     "agent",
     # Assess agent decision
-    tools_condition,
+    tools_condition,{
+        "tools" : "tools",
+        "__end__": END,
+    },
+)
+
+workflow.add_conditional_edges(
+    "tools",  # The node from which the condition is evaluated
+    check_last_tool,  # The function that determines the next node
     {
-        "LedgerIQ_FAQs": "generate"
-        "Mongodb_tool": END
+        "generate": "generate",
+        "generate_finance_answer": "generate_finance_answer",
+        "END": END
     }
 )
 
-
-
+# Connect the generate nodes to END
+workflow.add_edge("generate", END)
+workflow.add_edge("generate_finance_answer", END)
 # Update edges for MongoDB path
-workflow.add_edge("retrieve", "generate")
-workflow.add_edge("generate", END)                     # After generating response, end
-workflow.add_edge("mongodb_tool_node", "generate_finance_answer")
-workflow.add_edge("generate_finance_answer", END)      # After finance answer, end
+                  # After generating response, end
+      # After finance answer, end
 
 
 # ____________________________________________________ Display Graph ____________________________________________________ #
