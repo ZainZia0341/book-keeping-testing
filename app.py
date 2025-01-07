@@ -329,6 +329,8 @@ def agent(MessagesState):
         Give response like "I am an AI Assistant specialies in financial queries analysis and to help your in using the app please ask something related to app or your financial data."
         and never end your sentence with i don't know that or I only know this
 
+        Note remember never entain user query if it is other than book keeping app or financial guide from the app always reply like i can not help you with that please ask revelent thing.
+
     so in short you need to return one of three things
     LedgerIQ_FAQs
     generate_query_str
@@ -496,19 +498,28 @@ def check_last_tool(MessagesState: Dict[str, Any]) -> str:
     Determines the next node based on the last tool called.
 
     Args:
-        state (dict): The current state of the graph.
+        MessagesState (dict): The current state of the graph.
 
     Returns:
         str: The name of the next node to invoke.
     """
-
     print("TTTTTTTTTTTTT ", MessagesState)
-    tool_calls = MessagesState.get('tool_calls', [])
+    messages = MessagesState.get('messages', [])
+    tool_calls = []
+
+    # Extract tool_calls from all AIMessage instances
+    for msg in messages:
+        if isinstance(msg, AIMessage):
+            tool_calls.extend(msg.additional_kwargs.get('tool_calls', []))
+    print("tools_calls YYYYYYYYYYYYYY", tool_calls)
     if not tool_calls:
         return "END"  # No tools called yet; end the workflow.
 
     last_tool_call = tool_calls[-1]
-    last_tool_name = last_tool_call.get('name', '')
+    print("last_tool_call EEEEEEEEEEEEEEE ", last_tool_call)
+    last_tool_name = last_tool_call.get('function', {}).get('name', '')
+
+    print(f"Last tool called: {last_tool_name}")  # Debug log
 
     if last_tool_name == 'LedgerIQ_FAQs':
         return "generate"
