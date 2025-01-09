@@ -35,3 +35,4 @@ langchain-mongodb==0.3.0
 
 langchain-aws==0.2.10
 
+langgraph-checkpoint-mongodb==0.1.0

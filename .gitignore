@@ -4,6 +4,8 @@ lambda-layer
 
 env
 
+vertual-environment
+
 __pycache__/*
 
 venv
