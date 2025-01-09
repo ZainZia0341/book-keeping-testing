@@ -90,13 +90,11 @@ def agent(MessagesState):
 
     print("---CALL AGENT---")
     messages = MessagesState["messages"]
-    print("Message that will be passed to agent for routing decision ", messages)
     model = llm
     model = model.bind_tools(tools)
     response = model.invoke(messages)
 
     # time.sleep(3)
-    print("Answer of agent in response of input messages state with all history ", response)
     return {"messages": [response]}
 
 
@@ -110,8 +108,6 @@ def generate(MessagesState):
             last_human_message = msg
             break  # Stop as soon as we find the last HumanMessage
     question = last_human_message.content
-    print("returned documents from vector database ", docs)
-    print("question to be answered by AI ", question)
     prompt = PromptTemplate(
         template="""The AI should provide conversational and engaging responses, answering user questions clearly and encouraging further dialogue. At the end of each response, it should offer additional assistance or suggest ways to help. Avoid using phrases like 'I don't know' or 'I only know this according to my database.'
         Here is the retrieved document: \n\n {docs} \n\n
@@ -125,7 +121,7 @@ def generate(MessagesState):
 
     # time.sleep(3)
     response = rag_chain.invoke({"docs": docs, "question": question})
-    return {"messages": [response]}
+    return {"messages": [AIMessage(content=response)]}
 
 
 
@@ -134,15 +130,11 @@ def generate_finance_answer(MessagesState):
     messages = MessagesState["messages"]
     tool_message = messages[-1]
     financial_data = tool_message.content
-    print("State data:", MessagesState)
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
             last_human_message = msg
             break  # Stop as soon as we find the last HumanMessage
     user_question = last_human_message.content
-    print(f"User Question: {user_question}")
-    print(f"Financial data received: {financial_data}")
-    
     if not financial_data:
         print("No financial data found for the given query.")
         return {"messages": [AIMessage(content="No financial data found for the given query.")]}
@@ -231,7 +223,6 @@ def check_last_tool(MessagesState: Dict[str, Any]) -> str:
     Returns:
         str: The name of the next node to invoke.
     """
-    print("TTTTTTTTTTTTT ", MessagesState)
     messages = MessagesState.get('messages', [])
     tool_calls = []
 
@@ -239,15 +230,11 @@ def check_last_tool(MessagesState: Dict[str, Any]) -> str:
     for msg in messages:
         if isinstance(msg, AIMessage):
             tool_calls.extend(msg.additional_kwargs.get('tool_calls', []))
-    print("tools_calls YYYYYYYYYYYYYY", tool_calls)
     if not tool_calls:
         return "END"  # No tools called yet; end the workflow.
 
     last_tool_call = tool_calls[-1]
-    print("last_tool_call EEEEEEEEEEEEEEE ", last_tool_call)
     last_tool_name = last_tool_call.get('function', {}).get('name', '')
-
-    print(f"Last tool called: {last_tool_name}")  # Debug log
 
     if last_tool_name == 'LedgerIQ_FAQs':
         return "generate"
@@ -257,7 +244,7 @@ def check_last_tool(MessagesState: Dict[str, Any]) -> str:
         return "END"  # Unknown tool; end the workflow.
 
 def filter_node(state: MessagesState):
-    filter_msg = [RemoveMessage(id = m.id) for m in state["messages"][:-2]]
+    filter_msg = [RemoveMessage(id = m.id) for m in state["messages"][:-8]]
     print("------------------- filter_msg-------------------")
     print(filter_msg)
     return {"messages": filter_msg}

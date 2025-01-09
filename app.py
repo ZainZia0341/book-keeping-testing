@@ -47,11 +47,8 @@ async def execute_workflow_stream(input_message: str, thread_id: str, user_id: s
             }
         }
         inputs = {"messages": [("human", input_message)]}
-        streamed_responses = []
-        async for chunk in graph.astream(inputs, config, stream_mode="values",):
-            streamed_responses.append(chunk)
-        final_result = streamed_responses[-1] if streamed_responses else {}
-        return final_result
+        res = await graph.ainvoke(inputs, config)
+        return res
     except Exception as e:
         print(f"Error during workflow execution: {e}")
         traceback.print_exc()
