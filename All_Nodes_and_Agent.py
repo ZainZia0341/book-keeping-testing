@@ -1,5 +1,6 @@
-from langchain_core.messages import HumanMessage, AIMessage, RemoveMessage
+from langchain_core.messages import HumanMessage, AIMessage, RemoveMessage, ToolMessage
 from langchain_core.output_parsers import StrOutputParser
+from youtube_integration import search_youtube_videos
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import MessagesState
 from typing import Dict, Any
@@ -101,26 +102,50 @@ def agent(MessagesState):
 def generate(MessagesState):
     print("---GENERATE---")
     messages = MessagesState["messages"]
-    last_message = messages[-1]
+    print("messages in generate node after youtube ____________________ ",messages)
+    last_message = messages[-2]
+    video_content = messages[-1]
+    videos_details = video_content.content
+    print("------------------ video details ---------------- ", videos_details)
     docs = last_message.content
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
             last_human_message = msg
             break  # Stop as soon as we find the last HumanMessage
+    print("______________________ docs ", docs)
     question = last_human_message.content
+    print("______________________ question ", question)
     prompt = PromptTemplate(
-        template="""The AI should provide conversational and engaging responses, answering user questions clearly and encouraging further dialogue. At the end of each response, it should offer additional assistance or suggest ways to help. Avoid using phrases like 'I don't know' or 'I only know this according to my database.'
-        Here is the retrieved document: \n\n {docs} \n\n
-        Here is the user question: {question} \n
-        """,
-        input_variables=["docs", "question"],
+        template="""The AI should provide concise and short responses, answering user questions clearly and offering additional assistance. If relevant, incorporate video details into the response. Avoid using phrases like 'I don't know' or 'I only know this according to my database.'
+        
+        If video is not related to the user question then do not add them in your final response
+
+        Response Examples:
+        1. User:   "How do I create an invoice in the app?"
+        
+        AI: "To create an invoice, simply go to the 'Invoicing' section, select 'Create 
+        New Invoice,' and enter the necessary details like customer information, 
+        itemized services, and payment terms. You can then send the invoice directly
+        to your client via email or download it as a PDF. If you'd like to see a step-by-
+        step example, I’ve got a video for you! Check out this YouTube tutorial on 
+        creating invoices [example url of the video here] to see it in action. Let me know if you need any further 
+        help! 
+
+        Here is the retrieved document: {docs}
+        
+        Here is the user question: {question}
+        
+        Video Details: {videos_details}
+        
+        Please provide a response in a question-answer format, maintaining a helpful and engaging tone.""",
+        input_variables=["docs", "question", "videos_details"],
     )
 
     # Chain
     rag_chain = prompt | llm | StrOutputParser()
 
     # time.sleep(3)
-    response = rag_chain.invoke({"docs": docs, "question": question})
+    response = rag_chain.invoke({"docs": docs, "question": question, "videos_details": videos_details})
     return {"messages": [AIMessage(content=response)]}
 
 
@@ -237,14 +262,60 @@ def check_last_tool(MessagesState: Dict[str, Any]) -> str:
     last_tool_name = last_tool_call.get('function', {}).get('name', '')
 
     if last_tool_name == 'LedgerIQ_FAQs':
-        return "generate"
+        return "youtube_search_node"
     elif last_tool_name == 'Mongodb_tool':
         return "generate_finance_answer"
     else:
         return "END"  # Unknown tool; end the workflow.
 
 def filter_node(state: MessagesState):
-    filter_msg = [RemoveMessage(id = m.id) for m in state["messages"][:-8]]
+    filter_msg = [RemoveMessage(id = m.id) for m in state["messages"][:-20]]
     print("------------------- filter_msg-------------------")
     print(filter_msg)
     return {"messages": filter_msg}
+
+
+def youtube_enhance_node(MessagesState):
+    """
+    Node to enhance responses with relevant YouTube video links
+    """
+    print("---YOUTUBE ENHANCE NODE---")
+    messages = MessagesState["messages"]
+    
+    # Get the original query and current response
+    last_response = messages[-1].content
+
+    print("--------------- checking last response in youtube node------------------------")
+    print(last_response)
+    
+    # Get original query
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            query = msg.content
+            break
+    
+    # Search for relevant video
+    print("----------------------query search----------------------")
+    video = search_youtube_videos(query)
+    print(query)
+    
+    # Format the video data into a proper message
+    formatted_videos = ""
+    if video and video.get('items'):
+        for item in video.get('items', []):
+            video_info = {
+                'title': item['snippet']['title'],
+                'channel': item['snippet']['channelTitle'],
+                'description': item['snippet']['description'],
+                'url': f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+            }
+            formatted_videos += f"\nTitle: {video_info['title']}\n"
+            formatted_videos += f"Channel: {video_info['channel']}\n"
+            formatted_videos += f"Description: {video_info['description']}\n"
+            formatted_videos += f"URL: {video_info['url']}\n"
+            formatted_videos += "-" * 50 + "\n"
+    else:
+        formatted_videos = "No relevant videos found."
+
+    # Return as a proper AIMessage
+    return {"messages": [AIMessage(content=formatted_videos)]}
