@@ -129,7 +129,9 @@ def generate(MessagesState):
         to your client via email or download it as a PDF. If you'd like to see a step-by-
         step example, I’ve got a video for you! Check out this YouTube tutorial on 
         creating invoices [example url of the video here] to see it in action. Let me know if you need any further 
-        help! 
+        help!
+
+        Note: You can add more than one youtube recommendation url for the user if revelent.
 
         Here is the retrieved document: {docs}
         

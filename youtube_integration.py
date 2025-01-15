@@ -5,7 +5,7 @@ import json
 import os
 
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API")
-CHANNEL_ID = "UC8butISFwT-Wl7EV0hUK0BQ"  # freeCodeCamp channel ID
+CHANNEL_ID = os.environ.get("CHANNEL_ID") # "UC8butISFwT-Wl7EV0hUK0BQ"  # freeCodeCamp channel ID
 
 def search_youtube_videos(query: str, max_results: int = 3) -> Optional[Dict[str, str]]:
     """
@@ -25,7 +25,7 @@ def search_youtube_videos(query: str, max_results: int = 3) -> Optional[Dict[str
             part="snippet",
             q=query,
             type="video",
-            # channelId=CHANNEL_ID,
+            channelId=CHANNEL_ID,
             maxResults=max_results
         )
         
