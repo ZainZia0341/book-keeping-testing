@@ -10,10 +10,8 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
 from mongodb_reuse import get_mongodb_vector_store, get_embedding_model
 from pymongo import MongoClient
-MONGODB_ATLAS_CLUSTER_URI = os.environ.get("MONGODB_ATLAS_CLUSTER_URI")
+from config import MONGODB_ATLAS_CLUSTER_URI, COLLECTION_NAME, DB_NAME
 
-COLLECTION_NAME = "langchain_test_vectorstores"
-DB_NAME = "langchain_test_db"
 
 client = MongoClient(MONGODB_ATLAS_CLUSTER_URI)
     

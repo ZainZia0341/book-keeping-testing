@@ -6,19 +6,7 @@ from pymongo import MongoClient
 # from langchain_mongodb import MongoDBAtlasVectorSearch
 from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
 from langchain_aws import BedrockEmbeddings
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Setting Environment Variables
-MONGODB_ATLAS_CLUSTER_URI = os.environ.get("MONGODB_ATLAS_CLUSTER_URI")
-COLLECTION_NAME = "langchain_test_vectorstores"
-DB_NAME = "langchain_test_db"
-ATLAS_VECTOR_SEARCH_INDEX_NAME = "vector_index"  # "vector_db_index"
-
-BEDROCK_CREDENTIALS_PROFILE_NAME = os.getenv("BEDROCK_CREDENTIALS_PROFILE_NAME", "default")
-
-BEDROCK_REGION_NAME = os.getenv("BEDROCK_REGION_NAME", "us-east-1")
+from config import MONGODB_ATLAS_CLUSTER_URI, COLLECTION_NAME, DB_NAME, ATLAS_VECTOR_SEARCH_INDEX_NAME, BEDROCK_CREDENTIALS_PROFILE_NAME, BEDROCK_REGION_NAME
 
 def get_embedding_model():
     embeddings = BedrockEmbeddings(

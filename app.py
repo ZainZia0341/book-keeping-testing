@@ -5,8 +5,9 @@ from fastapi.responses import JSONResponse
 from graph_flow import workflow
 from config import MONGODB_URI
 from pydantic import BaseModel
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import traceback
+from typing import List, Dict, Any
 
 MONGO_URI = MONGODB_URI
 
@@ -139,3 +140,82 @@ async def agent_endpoint(req: UserRequest):
                 "message": f"An unexpected error occurred: {str(e)}"
             }
         )
+
+from pymongo import MongoClient
+from fetch_conversation import fetch_conversation
+from save_thread_summary import save_thread_summary
+from fetch_thread_ids import get_thread_ids
+
+# MongoDB Connection
+if not MONGO_URI:
+    raise ValueError("Please set the MONGODB_URI environment variable.")
+
+client = MongoClient(MONGO_URI)
+
+# Specify the database and collections
+db_name = 'checkpointing_db'
+checkpoints_collection_name = 'checkpoints_aio'
+thread_summaries_collection_name = 'thread_summaries'
+
+db = client[db_name]
+checkpoints_collection = db[checkpoints_collection_name]
+thread_summaries_collection = db[thread_summaries_collection_name]
+
+# Pydantic Models
+class ConversationResponse(BaseModel):
+    thread_id: str
+    messages: List
+
+class ThreadSummaryRequest(BaseModel):
+    user_id: str
+    thread_id: str
+    text: str
+
+class ThreadSummaryResponse(BaseModel):
+    message: str
+
+class ThreadSummary(BaseModel):
+    thread_id: str
+    starting_text: str
+
+# Route: Fetch conversation
+@app.get("/conversation/{thread_id}", response_model=ConversationResponse)
+def get_conversation(thread_id: str):
+    """
+    Fetch the entire conversation for a specific thread_id.
+    """
+    conversation = fetch_conversation(thread_id, checkpoints_collection)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Thread ID not found or invalid data format.")
+    return conversation
+
+# Route: Save thread summary
+@app.post("/thread-summary", response_model=ThreadSummaryResponse, status_code=201)
+def create_thread_summary(summary_request: ThreadSummaryRequest):
+    """
+    Save the starting few characters of a conversation.
+    """
+    try:
+        save_thread_summary(
+            user_id=summary_request.user_id,
+            thread_id=summary_request.thread_id,
+            text=summary_request.text,
+            thread_summaries_collection=thread_summaries_collection
+        )
+        return {"message": "Thread summary saved successfully."}
+    except Exception as e:
+        print(f"Error saving thread summary: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+# Route: Fetch all thread IDs for a user
+@app.get("/threads/{user_id}", response_model=List[ThreadSummary])
+def get_user_threads(user_id: str):
+    """
+    Fetch all thread IDs for a specific user along with the starting text of each conversation.
+    """
+    try:
+        summaries = get_thread_ids(user_id, thread_summaries_collection)
+        return summaries
+    except Exception as e:
+        print(f"Error fetching thread summaries: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
