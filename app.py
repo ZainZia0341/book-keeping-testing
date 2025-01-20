@@ -1,11 +1,12 @@
-from mongodb_chathistory_connection import checkpointer
+from checkpointer_connection.mongodb_chathistory_connection import checkpointer
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 from fastapi.responses import JSONResponse
-from graph_flow import workflow
+from LangGraph_flow_Nodes.graph_flow import workflow
 from config import MONGODB_URI
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
+from Article_vectorDB.Add_Article_mongodb import fetch_and_sync_articles
 import traceback
 from typing import List, Dict, Any
 
@@ -73,6 +74,11 @@ class UserRequest(BaseModel):
     user_id: str
     message: str
     thread_id: str
+
+class SyncResponse(BaseModel):
+    message: str
+    added: int
+    removed: int
 
 
 @app.post("/agent")
@@ -142,9 +148,9 @@ async def agent_endpoint(req: UserRequest):
         )
 
 from pymongo import MongoClient
-from fetch_conversation import fetch_conversation
-from save_thread_summary import save_thread_summary
-from fetch_thread_ids import get_thread_ids
+from conversations_threads_APIs.fetch_conversation import fetch_conversation
+from conversations_threads_APIs.save_thread_summary import save_thread_summary
+from conversations_threads_APIs.fetch_thread_ids import get_thread_ids
 
 # MongoDB Connection
 if not MONGO_URI:
@@ -219,3 +225,26 @@ def get_user_threads(user_id: str):
     except Exception as e:
         print(f"Error fetching thread summaries: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+    
+
+# ======================= New Endpoint to Fetch and Add Articles ======================= #
+
+@app.get("/fetch_and_add_articles", response_model=SyncResponse, summary="Fetch articles from WordPress API and synchronize with MongoDB")
+async def fetch_and_add_articles_endpoint():
+    """
+    Fetch articles from the WordPress API, process them, generate embeddings for new articles,
+    and synchronize with the MongoDB Atlas vector database by adding new articles and removing obsolete ones.
+    """
+    try:
+        sync_result = fetch_and_sync_articles()
+        return SyncResponse(
+            message="Successfully synchronized articles.",
+            added=sync_result.get("added", 0),
+            removed=sync_result.get("removed", 0)
+        )
+    except Exception as e:
+        print(f"Error in fetch_and_add_articles_endpoint: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    
+# ============================================================================================ #

@@ -1,0 +1,19 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+MONGODB_URI = os.getenv("MONGODB_URI")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
+
+
+MONGODB_ATLAS_CLUSTER_URI = os.getenv("MONGODB_ATLAS_CLUSTER_URI")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME")
+DB_NAME = os.getenv("DB_NAME")
+ATLAS_VECTOR_SEARCH_INDEX_NAME = os.getenv("ATLAS_VECTOR_SEARCH_INDEX_NAME")
+
+# Bedrock 
+BEDROCK_REGION_NAME = os.getenv("BEDROCK_REGION_NAME", "us-east-1")
+BEDROCK_CREDENTIALS_PROFILE_NAME = os.getenv("BEDROCK_CREDENTIALS_PROFILE_NAME", "default")

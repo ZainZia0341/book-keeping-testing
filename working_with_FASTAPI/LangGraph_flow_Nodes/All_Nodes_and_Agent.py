@@ -1,6 +1,6 @@
 from langchain_core.messages import HumanMessage, AIMessage, RemoveMessage, ToolMessage
 from langchain_core.output_parsers import StrOutputParser
-from youtube_integration import search_youtube_videos
+from youtube_connection_API.youtube_integration import search_youtube_videos
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import MessagesState
 from typing import Dict, Any
@@ -8,7 +8,7 @@ import datetime
 import os
 
 from config import MONGODB_URI, LANGCHAIN_API_KEY
-from llm import llm
+from LLM_model.llm import llm
 from tools import tools
 
 # LangSmith for Error Tracing

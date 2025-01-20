@@ -1,7 +1,4 @@
 # mongodb_reuse.py
-
-import os
-from dotenv import load_dotenv
 from pymongo import MongoClient
 # from langchain_mongodb import MongoDBAtlasVectorSearch
 from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch

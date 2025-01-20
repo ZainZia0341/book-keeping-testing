@@ -13,7 +13,7 @@ from config import MONGODB_URI
 
 # from pinecone_reuse import get_pinecone_index
 # from chromadb_reuse import get_chromadb_index
-from mongodb_reuse import get_mongodb_vector_store
+from mongodb_vectordb_knowledge.mongodb_reuse import get_mongodb_vector_store
 
 # retriever = get_pinecone_index()
 # retriever = get_chromadb_index()
