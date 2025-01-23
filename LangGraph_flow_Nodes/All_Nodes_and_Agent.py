@@ -104,14 +104,8 @@ def generate(MessagesState):
     print("---GENERATE---")
     messages = MessagesState["messages"]
     print("messages in generate node after youtube ____________________ ",messages)
-    video_content = messages[-2]
-    article_details = messages[-1]
-    docs = messages[-3].content
+    docs = messages[-1].content
     print("--------------- docs ----------------- ", docs)
-    article_search_details = article_details.content
-    print("------------------ article_search_details ---------------- ", article_search_details)
-    video_details = video_content.content
-    print("---------------------- video_details ------------------ ", video_details)
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
             last_human_message = msg
@@ -119,45 +113,34 @@ def generate(MessagesState):
     question = last_human_message.content
     print("---------------- question ---------------- ", question)
     prompt = PromptTemplate(
-        template="""The AI should provide concise and short responses, answering user questions clearly and offering additional assistance. If relevant, incorporate video details and article search details results into the response. Avoid using phrases like 'I don't know' or 'I only know this according to my database.'
+        template="""The AI should provide concise and short responses, answering user questions clearly and offering additional assistance. Avoid using phrases like 'I don't know' or 'I only know this according to my database.'
         
-        If video or article search results are not related to the user question, do not add them in your final response.
-
         Response Examples:
         1. User: "How do I create an invoice in the app?"
         AI: "To create an invoice, simply go to the 'Invoicing' section, select 'Create 
         New Invoice,' and enter the necessary details like customer information, 
         itemized services, and payment terms. You can then send the invoice directly
-        to your client via email or download it as a PDF. If you'd like to see a step-by-
-        step example, I’ve got a video for you! Check out this YouTube tutorial [URL] on 
-        creating invoices to see it in action. Let me know if you need any further 
-        help!"
+        to your client via email or download it as a PDF.
 
         2. User: "How profitable is my company this quarter compared to last quarter?"
         AI: "Your net profit for this quarter is $25,000, which is a 10% increase from last 
         quarter’s net profit of $22,500. If you'd like a more detailed breakdown or need help 
         interpreting any of the figures, I can provide that too!
-        For a deeper understanding of how to analyze your financials, feel free to read this article [URL] 
-        that dives into profitability analysis. Let me know if you’d like to dive into any specific 
-        areas of your financial performance!"
 
         Here is the retrieved document: {docs}
         
         Here is the user question: {question}
         
-        Video Details: {videos_details}
-        
-        Similarity Search Results: {article_search_details}
         
         Please provide a response in a question-answer format, maintaining a helpful and engaging tone.""",
-        input_variables=["docs", "question", "videos_details", "article_search_details"],
+        input_variables=["docs", "question"],
     )
 
     # Chain
     rag_chain = prompt | llm | StrOutputParser()
 
     # time.sleep(3)
-    response = rag_chain.invoke({"docs": docs, "question": question, "videos_details": video_details, "article_search_details": article_search_details})
+    response = rag_chain.invoke({"docs": docs, "question": question})
     return {"messages": [AIMessage(content=response)]}
 
 
@@ -274,7 +257,7 @@ def check_last_tool(MessagesState: Dict[str, Any]) -> str:
     last_tool_name = last_tool_call.get('function', {}).get('name', '')
 
     if last_tool_name == 'LedgerIQ_FAQs':
-        return "youtube_search_node"
+        return "generate"
     elif last_tool_name == 'Mongodb_tool':
         return "generate_finance_answer"
     else:
@@ -285,87 +268,3 @@ def filter_node(state: MessagesState):
     print("------------------- filter_msg-------------------")
     print(filter_msg)
     return {"messages": filter_msg}
-
-
-def youtube_enhance_node(MessagesState):
-    """
-    Node to enhance responses with relevant YouTube video links
-    """
-    print("---YOUTUBE ENHANCE NODE---")
-    messages = MessagesState["messages"]
-    
-    # Get the original query and current response
-    last_response = messages[-1].content
-
-    print("--------------- checking last response in youtube node------------------------")
-    print(last_response)
-    
-    # Get original query
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            query = msg.content
-            break
-    
-    # Search for relevant video
-    print("----------------------query search----------------------")
-    video = search_youtube_videos(query)
-    print(query)
-    
-    # Format the video data into a proper message
-    formatted_videos = ""
-    if video and video.get('items'):
-        for item in video.get('items', []):
-            video_info = {
-                'title': item['snippet']['title'],
-                'channel': item['snippet']['channelTitle'],
-                'description': item['snippet']['description'],
-                'url': f"https://www.youtube.com/watch?v={item['id']['videoId']}"
-            }
-            formatted_videos += f"\nTitle: {video_info['title']}\n"
-            formatted_videos += f"Channel: {video_info['channel']}\n"
-            formatted_videos += f"Description: {video_info['description']}\n"
-            formatted_videos += f"URL: {video_info['url']}\n"
-            formatted_videos += "-" * 50 + "\n"
-    else:
-        formatted_videos = "No relevant videos found."
-
-    # Return as a proper AIMessage
-    return {"messages": [AIMessage(content=formatted_videos)]}
-
-
-def similarity_search_node(MessagesState, threshold: float = 0.75, top_k: int = 1):
-    print("---SIMILARITY SEARCH NODE ACTIVATED---")
-    messages = MessagesState["messages"]
-
-    # Extract the user's latest question from the messages
-    user_question = ""
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            user_question = msg.content
-            break
-
-    if not user_question:
-        print("No user question found in MessagesState.")
-        return {"messages": []}  # No action needed
-
-    print(f"User Question XXXXXXXXXXXXXXXXXXXXXXXX: {user_question}")
-
-    # Perform similarity search using the user's question
-    similar_articles = perform_similarity_search(query=user_question, threshold=threshold, top_k=top_k)
-
-    if similar_articles:
-        print(f"Found {len(similar_articles)} similar articles exceeding the threshold.")
-
-        # Format the retrieved titles and URLs
-        formatted_results = ""
-        for article in similar_articles:
-            formatted_results += f"Title: {article['title']}\nURL: {article['url']}\nScore: {article['score']}\n" + "-"*50 + "\n"
-
-        # Optionally, you can log or handle the similarity scores as needed
-        print(f"Formatted Videos:\n{formatted_results}")
-
-        # Return the new message to be appended to MessagesState
-        return {"messages": [AIMessage(content=formatted_results)]}
-    else:
-        print("No relevant articles found above the threshold.")
-        return {"messages": []}  # No action needed
