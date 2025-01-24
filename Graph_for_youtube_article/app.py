@@ -26,47 +26,6 @@ os.environ["LANGCHAIN_API_KEY"] = os.environ.get("LANGCHAIN_API_KEY")
 # ______________________________ State of Graph __________________________ #
 workflow = StateGraph(MessagesState)
 
-# ----------------------- FastAPI Inference ---------------------- #
-app = FastAPI()
-
-# ----------------------- Pydantic model and Middle wear for FastAPI request ---------------------- #
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], 
-    allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"], 
-    expose_headers=["*"]
-)
-
-class UserRequest(BaseModel):
-    question: str
-    answer: str
-
-# _______________________________ FastAPI Endpoint _____________________________ #
-
-@app.post("/youtube_article")
-def agent_endpoint(req: UserRequest):
-    question = req.question
-    answer = req.answer
-    try:
-        # 1. Execute main workflow
-        response_dict = start_Graph_execution(
-            question=question,
-            answer=answer,
-        )
-        return {"result": response_dict}
-
-    except Exception as e:
-        print("----- ERROR OCCURRED -----")
-        traceback.print_exc()
-        return JSONResponse(
-            status_code=500,
-            content={
-                "message": f"An unexpected error occurred: {str(e)}"
-            }
-        )
-
 # ___________________________ checkpointer cashed memory ___________________________ #
 
 # checkpointer = MemorySaver()
@@ -204,7 +163,7 @@ workflow.add_edge("generate", END)
 
 graph = workflow.compile()
 
-def start_Graph_execution(question: str, answer: str) -> dict:
+def start_Youtube_article_Graph_execution(question: str, answer: str) -> dict:
     try:
         # config = {
         #     "configurable": {

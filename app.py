@@ -7,6 +7,8 @@ from config import MONGODB_URI
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
 from Article_vectorDB.Add_Article_mongodb import fetch_and_sync_articles
+from Graph_for_youtube_article.app import start_Youtube_article_Graph_execution
+from conversation_categorization.conversation_categorization import save_category, categorize_message
 import traceback
 from typing import List, Dict, Any
 
@@ -25,17 +27,6 @@ def get_langGraph_image_flow():
         display(Image(graph.get_graph(xray=True).draw_mermaid_png()))
     except Exception:
         pass
-# _________________________________________________________________ #
-
-async def drop_prepared_statements(conn):
-    """
-    Drops any prepared statements to clean up the database connection.
-
-    Args:
-        conn: The database connection
-    """
-    async with conn.cursor() as cursor:
-        await cursor.execute("DEALLOCATE ALL;")
 
 # _________________________________________________________________ #
 
@@ -225,7 +216,6 @@ def get_user_threads(user_id: str):
     except Exception as e:
         print(f"Error fetching thread summaries: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
 
 # ======================= New Endpoint to Fetch and Add Articles ======================= #
 
@@ -247,4 +237,73 @@ async def fetch_and_add_articles_endpoint():
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     
+# ============================================================================================ #
+
+# _______________________________ FastAPI Endpoint _____________________________ #
+
+class UserRequest(BaseModel):
+    question: str
+    answer: str
+
+
+@app.post("/youtube_article")
+def agent_endpoint(req: UserRequest):
+    question = req.question
+    answer = req.answer
+    try:
+        # 1. Execute main workflow
+        response_dict = start_Youtube_article_Graph_execution(
+            question=question,
+            answer=answer,
+        )
+        return {"result": response_dict}
+
+    except Exception as e:
+        print("----- ERROR OCCURRED -----")
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": f"An unexpected error occurred: {str(e)}"
+            }
+        )
+
+
+# ========================= FASTAPI for Conversation Category ================================= #
+
+# Define the Pydantic model for request validation
+class CategorizationRequest(BaseModel):
+    user_id: str
+    thread_id: str
+    message: str
+
+@app.post("/categorize_conversation")
+def categorize_conversation_endpoint(req: CategorizationRequest):
+    """
+    Categorizes a user message and saves the category to MongoDB.
+
+    Args:
+        req (CategorizationRequest): The request body containing user_id, thread_id, and message.
+
+    Returns:
+        JSONResponse: Success or error message.
+    """
+    user_id = req.user_id
+    thread_id = req.thread_id
+    message = req.message
+
+    try:
+        # Categorize the message
+        category = categorize_message(message)
+
+        # Save the categorized data
+        save_category(user_id, thread_id, message, category)
+
+        return JSONResponse(status_code=200, content={"message": "Categorization successful.", "category": category})
+    except Exception as e:
+        error_message = f"An error occurred during categorization: {str(e)}"
+        print(error_message)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=error_message)
+
 # ============================================================================================ #
