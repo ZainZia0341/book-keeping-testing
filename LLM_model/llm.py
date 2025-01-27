@@ -3,7 +3,7 @@ from config import GROQ_API_KEY # BEDROCK_CREDENTIALS_PROFILE_NAME, GOOGLE_API_K
 
 
 llm = ChatGroq(
-    model="llama-3.1-70b-versatile", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
+    model= "llama-3.3-70b-versatile", # "llama-3.1-70b-versatile", # "llama-3.2-90b-text-preview",  # "llama-3.3-70b-specdec", # "llama3-8b-8192"
     groq_api_key=GROQ_API_KEY,
     temperature=0,
     max_tokens=200,

@@ -1,7 +1,7 @@
 from checkpointer_connection.mongodb_chathistory_connection import checkpointer
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from LangGraph_flow_Nodes.graph_flow import workflow
 from config import MONGODB_URI
 from pydantic import BaseModel
@@ -9,7 +9,11 @@ from fastapi import FastAPI, HTTPException
 from Article_vectorDB.Add_Article_mongodb import fetch_and_sync_articles
 from Graph_for_youtube_article.app import start_Youtube_article_Graph_execution
 from conversation_categorization.conversation_categorization import save_category, categorize_message
+from report_generator.report_generator import generate_pdf_report
 import traceback
+from datetime import datetime
+import os
+
 from typing import List, Dict, Any
 
 MONGO_URI = MONGODB_URI
@@ -305,5 +309,51 @@ def categorize_conversation_endpoint(req: CategorizationRequest):
         print(error_message)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=error_message)
+
+# =============================== Report Generation ============================================ #
+
+class ReportRequest(BaseModel):
+    start_date: datetime
+    end_date: datetime
+
+@app.post("/generate_report", summary="Generate Conversation Categories Report")
+def generate_report_endpoint(report_req: ReportRequest):
+    """
+    Generates a PDF report of conversation categories within a specified time period.
+
+    Args:
+        report_req (ReportRequest): The request body containing start_date and end_date.
+
+    Returns:
+        FileResponse: The generated PDF report.
+    """
+    start_date = report_req.start_date
+    end_date = report_req.end_date
+
+    if start_date > end_date:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date.")
+
+    try:
+        # Define the output path
+        output_filename = f"Conversation_Report_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.pdf"
+        output_path = os.path.join("reports", output_filename)
+
+        # Ensure the reports directory exists
+        os.makedirs("reports", exist_ok=True)
+
+        # Generate the PDF report
+        generate_pdf_report(start_date, end_date, output_path)
+
+        # Return the PDF file
+        return FileResponse(path=output_path, media_type='application/pdf', filename=output_filename)
+
+    except ValueError as ve:
+        # Handle case when no data is found
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        # Handle other exceptions
+        print(f"Error generating report: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="An error occurred while generating the report.")
 
 # ============================================================================================ #
