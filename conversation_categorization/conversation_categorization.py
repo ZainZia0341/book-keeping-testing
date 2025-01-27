@@ -98,7 +98,7 @@ def categorize_message(message: str) -> str:
         traceback.print_exc()
         raise
 
-def save_category(user_id: str, thread_id: str, message: str, category: str) -> str:
+def save_category(user_id: str, username: str, thread_id: str, message: str, category: str) -> str:
     """
     Saves the categorized conversation details into MongoDB.
 
@@ -121,6 +121,7 @@ def save_category(user_id: str, thread_id: str, message: str, category: str) -> 
         # Prepare the document
         doc = {
             "user_id": user_id,
+            "username": username,
             "thread_id": thread_id,
             "message": message,
             "category": category,
@@ -130,7 +131,7 @@ def save_category(user_id: str, thread_id: str, message: str, category: str) -> 
         # Insert the document
         collection.insert_one(doc)
 
-        print(f"Saved category '{category}' for user '{user_id}' in thread '{thread_id}'.")
+        print(f"Saved category '{category}' for user '{username}' (ID: {user_id}) in thread '{thread_id}'.")
 
         return f"Category '{category}' saved successfully."
     except PyMongoError as e:

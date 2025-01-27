@@ -278,8 +278,10 @@ def agent_endpoint(req: UserRequest):
 # Define the Pydantic model for request validation
 class CategorizationRequest(BaseModel):
     user_id: str
+    username: str
     thread_id: str
     message: str
+
 
 @app.post("/categorize_conversation")
 def categorize_conversation_endpoint(req: CategorizationRequest):
@@ -293,6 +295,7 @@ def categorize_conversation_endpoint(req: CategorizationRequest):
         JSONResponse: Success or error message.
     """
     user_id = req.user_id
+    username = req.username 
     thread_id = req.thread_id
     message = req.message
 
@@ -301,7 +304,7 @@ def categorize_conversation_endpoint(req: CategorizationRequest):
         category = categorize_message(message)
 
         # Save the categorized data
-        save_category(user_id, thread_id, message, category)
+        save_category(user_id, username, thread_id, message, category)
 
         return JSONResponse(status_code=200, content={"message": "Categorization successful.", "category": category})
     except Exception as e:

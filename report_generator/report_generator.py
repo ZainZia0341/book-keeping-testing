@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from dotenv import load_dotenv
 from pymongo import MongoClient
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import getSampleStyleSheet
@@ -47,13 +48,16 @@ def fetch_data(start_date: datetime, end_date: datetime) -> pd.DataFrame:
     df = pd.DataFrame(data)
     return df
 
-def process_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def process_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     category_counts = df['category'].value_counts().reset_index()
     category_counts.columns = ['Category', 'Count']
 
-    user_conversations = df.groupby(['user_id', 'thread_id']).size().reset_index(name='Count')
+    user_conversations = df.groupby(['user_id','username', 'thread_id']).size().reset_index(name='Count')
 
-    return category_counts, user_conversations
+    # # Optional: Mapping of user_id to username
+    # user_info = df[['user_id', 'username']].drop_duplicates()
+
+    return category_counts, user_conversations, # user_info
 
 def create_category_chart(category_counts: pd.DataFrame) -> bytes:
     plt.figure(figsize=(10, 6))
@@ -71,11 +75,11 @@ def create_category_chart(category_counts: pd.DataFrame) -> bytes:
     return img_buffer
 
 def create_user_conversations_chart(user_conversations: pd.DataFrame) -> bytes:
-    user_totals = user_conversations.groupby('user_id')['Count'].sum().reset_index()
+    user_totals = user_conversations.groupby(['user_id', 'username'])['Count'].sum().reset_index()
 
     plt.figure(figsize=(10, 6))
-    plt.bar(user_totals['user_id'], user_totals['Count'], color='coral')
-    plt.xlabel('User ID')
+    plt.bar(user_totals['username'], user_totals['Count'], color='coral')
+    plt.xlabel('Username')
     plt.ylabel('Total Conversations')
     plt.title('Total Conversations per User')
     plt.xticks(rotation=45, ha='right')
@@ -87,24 +91,60 @@ def create_user_conversations_chart(user_conversations: pd.DataFrame) -> bytes:
     img_buffer.seek(0)
     return img_buffer
 
+def create_hyperlink(text: str, url: str) -> Paragraph:
+    """
+    Creates a clickable hyperlink for the given text and URL.
+
+    Args:
+        text (str): The display text for the link.
+        url (str): The URL to link to.
+
+    Returns:
+        Paragraph: A ReportLab Paragraph object with the embedded hyperlink.
+    """
+    # Define a paragraph style for links
+    link_style = ParagraphStyle(
+        name='LinkStyle',
+        fontName='Helvetica',
+        fontSize=10,
+        textColor='blue',
+        underline=True
+    )
+    # Create the hyperlink using HTML-like syntax
+    link = f'<link href="{url}">{text}</link>'
+    return Paragraph(link, style=link_style)
+
 def generate_pdf_report(start_date: datetime, end_date: datetime, output_path: str):
+    """
+    Generates a PDF report for the specified time period.
+
+    Args:
+        start_date (datetime): Start of the time period.
+        end_date (datetime): End of the time period.
+        output_path (str): Path to save the generated PDF.
+    """
+    # Fetch and process data
     df = fetch_data(start_date, end_date)
     if df.empty:
         raise ValueError("No data found for the specified time period.")
 
     category_counts, user_conversations = process_data(df)
 
+    # Create charts
     category_chart = create_category_chart(category_counts)
     user_conversations_chart = create_user_conversations_chart(user_conversations)
 
+    # Prepare PDF
     doc = SimpleDocTemplate(output_path, pagesize=LETTER)
     styles = getSampleStyleSheet()
     elements = []
 
+    # Title
     title = f"Conversation Categories Report\nPeriod: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
     elements.append(Paragraph(title, styles['Title']))
     elements.append(Spacer(1, 12))
 
+    # Category Counts Table
     elements.append(Paragraph("Total Count per Conversation Category", styles['Heading2']))
     table_data = [category_counts.columns.tolist()] + category_counts.values.tolist()
     table = Table(table_data, hAlign='LEFT')
@@ -120,13 +160,30 @@ def generate_pdf_report(start_date: datetime, end_date: datetime, output_path: s
     elements.append(table)
     elements.append(Spacer(1, 12))
 
+    # Category Counts Chart
     elements.append(Paragraph("Conversation Categories Distribution", styles['Heading2']))
     elements.append(Image(category_chart, width=400, height=300))
     elements.append(Spacer(1, 12))
 
+    # User Conversations Table with Clickable Thread IDs
     elements.append(Paragraph("Total Conversations by Each User with Thread IDs", styles['Heading2']))
-    table_data = [user_conversations.columns.tolist()] + user_conversations.values.tolist()
-    table = Table(table_data, hAlign='LEFT', repeatRows=1)
+    
+    # Prepare table data with clickable thread IDs
+    table_data = [user_conversations.columns.tolist()]  # Header
+    for index, row in user_conversations.iterrows():
+        user_id = row['user_id']
+        username = row['username']
+        thread_id = row['thread_id']
+        count = row['Count']
+        
+        # Create a clickable link for thread_id
+        # For testing purposes, we'll link to Google. Replace with desired URL in the future.
+        link = create_hyperlink(thread_id, "https://www.google.com")
+        
+        table_data.append([user_id, username, link, count])
+
+    # Define column widths for better presentation
+    table = Table(table_data, colWidths=[100, 150, 150, 100], hAlign='LEFT')
     table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.grey),
         ('TEXTCOLOR',(0,0),(-1,0),colors.whitesmoke),
@@ -139,6 +196,7 @@ def generate_pdf_report(start_date: datetime, end_date: datetime, output_path: s
     elements.append(table)
     elements.append(Spacer(1, 12))
 
+    # User Conversations Chart
     elements.append(Paragraph("Total Conversations per User", styles['Heading2']))
     elements.append(Image(user_conversations_chart, width=400, height=300))
     elements.append(Spacer(1, 12))
