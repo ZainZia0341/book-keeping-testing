@@ -337,8 +337,9 @@ def generate_report_endpoint(report_req: ReportRequest):
         raise HTTPException(status_code=400, detail="start_date must be before end_date.")
 
     try:
-        # Define the output path
-        output_filename = f"Conversation_Report_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.pdf"
+        # Define a unique output filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        output_filename = f"Conversation_Report_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}_{timestamp}.pdf"
         output_path = os.path.join("reports", output_filename)
 
         # Ensure the reports directory exists
