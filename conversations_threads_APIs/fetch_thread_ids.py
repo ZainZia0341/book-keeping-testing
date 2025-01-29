@@ -10,7 +10,7 @@ def get_thread_ids(user_id: str, thread_summaries_collection) -> List[Dict[str, 
     try:
         summaries_cursor = thread_summaries_collection.find(
             {"user_id": user_id},
-            {"_id": 0, "thread_id": 1, "starting_text": 1}
+            {"_id": 0, "thread_id": 1, "message": 1}
         )
         print("RRRRRRRRRRRRRRR ", summaries_cursor)
         summaries = list(summaries_cursor)

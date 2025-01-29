@@ -9,7 +9,7 @@ def save_thread_summary(user_id: str, thread_id: str, text: str, thread_summarie
     summary = {
         "user_id": user_id,
         "thread_id": thread_id,
-        "starting_text": starting_text
+        "message": starting_text
     }
     # Use upsert to avoid duplicates
     thread_summaries_collection.update_one(
