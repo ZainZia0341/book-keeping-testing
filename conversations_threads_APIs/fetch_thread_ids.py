@@ -12,7 +12,9 @@ def get_thread_ids(user_id: str, thread_summaries_collection) -> List[Dict[str, 
             {"user_id": user_id},
             {"_id": 0, "thread_id": 1, "starting_text": 1}
         )
+        print("RRRRRRRRRRRRRRR ", summaries_cursor)
         summaries = list(summaries_cursor)
+        print("RRRRRRRRRRRRRRR ", summaries_cursor)
         return summaries
     except Exception as e:
         print(f"Error fetching thread summaries: {e}")
