@@ -177,7 +177,7 @@ class ThreadSummaryResponse(BaseModel):
 
 class ThreadSummary(BaseModel):
     thread_id: str
-    starting_text: str
+    message: str
 
 # Route: Fetch conversation
 @app.get("/conversation/{thread_id}", response_model=ConversationResponse)
