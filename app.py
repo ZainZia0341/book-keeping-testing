@@ -1,15 +1,15 @@
-from checkpointer_connection.mongodb_chathistory_connection import checkpointer
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
+from checkpointer_connection.mongodb_chathistory_connection import checkpointer
 from fastapi.responses import JSONResponse, FileResponse
 from LangGraph_flow_Nodes.graph_flow import workflow
 from config import MONGODB_URI
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from Article_vectorDB.Add_Article_mongodb import fetch_and_sync_articles
-from Graph_for_youtube_article.app import start_Youtube_article_Graph_execution
 from conversation_categorization.conversation_categorization import save_category, categorize_message
 from report_generator.report_generator import generate_pdf_report
+from Graph_for_youtube_article.app import start_Youtube_article_Graph_execution
 import traceback
 from datetime import datetime
 import os
@@ -67,6 +67,7 @@ app.add_middleware(
 
 class UserRequest(BaseModel):
     user_id: str
+    username: str
     message: str
     thread_id: str
 
@@ -75,72 +76,55 @@ class SyncResponse(BaseModel):
     added: int
     removed: int
 
+def categorize_and_save(user_id: str, username: str, thread_id: str, message: str):
+    """
+    Categorize the message and save the category to MongoDB.
+    This function runs as a background task.
+    """
+    try:
+        # Categorize the message
+        category = categorize_message(message)
+        print("TTTTTTTTTTTTTTTTTTTTTTT ", category)
+        # Save the categorized data
+        save_category(user_id, username, thread_id, message, category)
+        # Optional: Log success
+        print(f"Categorization successful for user '{username}' (ID: {user_id}) in thread '{thread_id}'. Category: '{category}'")
+        
+    except Exception as e:
+        # Handle exceptions to prevent background task from crashing
+        error_message = f"An error occurred during categorization: {str(e)}"
+        print(error_message)
+        traceback.print_exc()
+        # Optionally, implement retry logic or other error handling mechanisms
 
 @app.post("/agent")
-async def agent_endpoint(req: UserRequest):
+async def agent_endpoint(req: UserRequest, background_tasks: BackgroundTasks):
     user_id = req.user_id
+    username = req.username
     message = req.message
     thread_id = req.thread_id
 
     try:
-        # 1. Execute main workflow
+        # Execute main workflow
         response_dict = await execute_workflow_stream(
             input_message=message,
             thread_id=thread_id,
             user_id=user_id
         )
+        print(" wwwwwwwwwwwwwwwwwwwwwwwwwwwwww ",response_dict)
+        # Run categorization without waiting
+        # Add the categorization task to run in the background
+        background_tasks.add_task(categorize_and_save, user_id, username, thread_id, message)
         return {"result": response_dict}
 
     except OperationalError as op_err:
-        # 2. Specifically handle OperationalError
-        err_str = str(op_err).lower()
-
-        # Check for "the connection is closed"
-        if "the connection is closed" in err_str:
-            print("Database connection was closed unexpectedly.")
-            # Optionally: Attempt to reconnect or retry
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "message": (
-                        "Database connection was closed unexpectedly. Please try again shortly or contact support."
-                    )
-                }
-            )
-
-        # Check for "SSL connection has been closed unexpectedly"
-        elif "ssl connection has been closed unexpectedly" in err_str:
-            print("SSL connection issue with the database.")
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "message": (
-                        "SSL connection issue with the database. Please check your network or contact support."
-                    )
-                }
-            )
-
-        # Catch-all for other OperationalError variants
-        else:
-            print("An unknown OperationalError occurred.")
-            traceback.print_exc()
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "message": f"A database error occurred: {op_err}"
-                }
-            )
+        print(f"Database error: {op_err}")
+        return JSONResponse(status_code=503, content={"message": f"Database error: {op_err}"})
 
     except Exception as e:
-        # 3. Handle any other unhandled exceptions
-        print("----- ERROR OCCURRED -----")
-        traceback.print_exc()  # For debugging; remove in production if needed
-        return JSONResponse(
-            status_code=500,
-            content={
-                "message": f"An unexpected error occurred: {str(e)}"
-            }
-        )
+        print("Unexpected error:")
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"message": f"Unexpected error: {str(e)}"})
 
 from pymongo import MongoClient
 from conversations_threads_APIs.fetch_conversation import fetch_conversation
@@ -274,44 +258,6 @@ def agent_endpoint(req: UserRequest):
 
 
 # ========================= FASTAPI for Conversation Category ================================= #
-
-# Define the Pydantic model for request validation
-class CategorizationRequest(BaseModel):
-    user_id: str
-    username: str
-    thread_id: str
-    message: str
-
-
-@app.post("/categorize_conversation")
-def categorize_conversation_endpoint(req: CategorizationRequest):
-    """
-    Categorizes a user message and saves the category to MongoDB.
-
-    Args:
-        req (CategorizationRequest): The request body containing user_id, thread_id, and message.
-
-    Returns:
-        JSONResponse: Success or error message.
-    """
-    user_id = req.user_id
-    username = req.username 
-    thread_id = req.thread_id
-    message = req.message
-
-    try:
-        # Categorize the message
-        category = categorize_message(message)
-
-        # Save the categorized data
-        save_category(user_id, username, thread_id, message, category)
-
-        return JSONResponse(status_code=200, content={"message": "Categorization successful.", "category": category})
-    except Exception as e:
-        error_message = f"An error occurred during categorization: {str(e)}"
-        print(error_message)
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=error_message)
 
 # =============================== Report Generation ============================================ #
 
