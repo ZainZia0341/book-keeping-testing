@@ -5,7 +5,7 @@ def save_thread_summary(user_id: str, thread_id: str, text: str, thread_summarie
     Save the starting few characters of a conversation to the thread_summaries collection.
     Only the first 10 characters are saved, followed by '...'.
     """
-    starting_text = text[:10] + "..." if len(text) > 10 else text
+    starting_text = text[:20] + "..." if len(text) > 10 else text
     summary = {
         "user_id": user_id,
         "thread_id": thread_id,

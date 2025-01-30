@@ -6,6 +6,7 @@ from LangGraph_flow_Nodes.graph_flow import workflow
 from config import MONGODB_URI
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from conversations_threads_APIs.delete_conversation import delete_thread
 from Article_vectorDB.Add_Article_mongodb import fetch_and_sync_articles
 from conversation_categorization.conversation_categorization import save_category, categorize_message
 from report_generator.report_generator import generate_pdf_report
@@ -306,4 +307,30 @@ def generate_report_endpoint(report_req: ReportRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="An error occurred while generating the report.")
 
-# ============================================================================================ #
+# ============================== Delete Conversation ======================================== #
+
+class DeleteThreadRequest(BaseModel):
+    user_id: str
+    thread_id: str
+
+@app.post("/delete_thread", summary="Delete a specific thread for a user")
+def delete_thread_endpoint(request: DeleteThreadRequest):
+    """
+    Deletes a specific thread_id for a specific user_id.
+
+    Args:
+        request (DeleteThreadRequest): The request body containing user_id and thread_id.
+
+    Returns:
+        JSONResponse: Success message or error.
+    """
+    try:
+        result = delete_thread(request.user_id, request.thread_id, thread_summaries_collection)
+        return result
+    except HTTPException as he:
+        # FastAPI will handle it
+        raise he
+    except Exception as e:
+        print(f"Unexpected error deleting thread: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while deleting the thread.")
