@@ -1,0 +1,32 @@
+# Ignore Python cache files
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Ignore virtual environments
+venv/
+virtual-environment
+env
+
+
+# Ignore sensitive files
+.env
+
+# Ignore unnecessary folders
+chroma_db/
+node_modules/
+other_files/
+reports/
+uuid_session/
+working_with_ecr/
+working_with_fastapi/
+testing.ipynb
+
+# Ignore Git files
+.git/
+.gitignore
+
+# Ignore unnecessary system files
+.DS_Store
+Thumbs.db

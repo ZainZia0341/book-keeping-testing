@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import MongoDBAtlasVectorSearch
+from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
 from langchain.docstore.document import Document
 
 # Load environment variables from .env file

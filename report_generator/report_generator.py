@@ -5,6 +5,8 @@ import os
 from datetime import datetime
 from typing import Tuple
 
+import matplotlib
+matplotlib.use('Agg')  # Use a non-interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
 from dotenv import load_dotenv
@@ -114,7 +116,7 @@ def create_hyperlink(text: str, url: str) -> Paragraph:
     link = f'<link href="{url}">{text}</link>'
     return Paragraph(link, style=link_style)
 
-def generate_pdf_report(start_date: datetime, end_date: datetime, output_path: str):
+def generate_pdf_report(start_date: datetime, end_date: datetime, output_stream: io.BytesIO):
     """
     Generates a PDF report for the specified time period.
 
@@ -135,7 +137,7 @@ def generate_pdf_report(start_date: datetime, end_date: datetime, output_path: s
     user_conversations_chart = create_user_conversations_chart(user_conversations)
 
     # Prepare PDF
-    doc = SimpleDocTemplate(output_path, pagesize=LETTER)
+    doc = SimpleDocTemplate(output_stream, pagesize=LETTER)
     styles = getSampleStyleSheet()
     elements = []
 
@@ -203,4 +205,4 @@ def generate_pdf_report(start_date: datetime, end_date: datetime, output_path: s
 
     doc.build(elements)
 
-    print(f"Report generated and saved to {output_path}")
+    print(f"Report generated and saved to")

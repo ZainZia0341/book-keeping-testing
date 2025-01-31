@@ -1,47 +1,32 @@
 langchain==0.3.3
 langchain-google-genai==2.0.1
 langchain-community==0.3.2
-langchain-experimental==0.3.2
 langgraph==0.2.38
-langgraph-checkpoint-postgres==2.0.1
-langchain-pinecone==0.2.0
-pinecone==5.0.0
 uvicorn==0.32.1
 fastapi==0.115.6
-# psycopg-c==3.2.3
-
-python-dotenv
-
-psycopg==3.2.3
-
-# psycopg[c]
-
-psycopg[binary]
-
-motor==3.6.0
-
 pymongo==4.9.2
-
-
 langchain-groq==0.2.1
-
-
 pypdf==5.1.0
-
-langchain-chroma==0.1.4
-
-
 langchain-mongodb==0.3.0
-
 langchain-aws==0.2.10
-
 langgraph-checkpoint-mongodb==0.1.0
-
 pandas==2.2.3
-
-
 matplotlib==3.9.4
-
-
 reportlab==4.2.5
+
+
+# langchain-experimental==0.3.2
+# langgraph-checkpoint-postgres==2.0.1
+# langchain-pinecone==0.2.0
+# pinecone==5.0.0
+# psycopg-c==3.2.3
+# python-dotenv
+# psycopg==3.2.3
+# psycopg[c]
+# psycopg[binary]
+# motor==3.6.0
+# langchain-chroma==0.1.4
+
+
+
 

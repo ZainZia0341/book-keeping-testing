@@ -1,7 +1,7 @@
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 from checkpointer_connection.mongodb_chathistory_connection import checkpointer
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from LangGraph_flow_Nodes.graph_flow import workflow
 from config import MONGODB_URI
 from pydantic import BaseModel
@@ -13,6 +13,8 @@ from report_generator.report_generator import generate_pdf_report
 from Graph_for_youtube_article.app import start_Youtube_article_Graph_execution
 import traceback
 from datetime import datetime
+from io import BytesIO
+
 import os
 
 from typing import List, Dict, Any
@@ -266,6 +268,7 @@ class ReportRequest(BaseModel):
     start_date: datetime
     end_date: datetime
 
+
 @app.post("/generate_report", summary="Generate Conversation Categories Report")
 def generate_report_endpoint(report_req: ReportRequest):
     """
@@ -275,7 +278,7 @@ def generate_report_endpoint(report_req: ReportRequest):
         report_req (ReportRequest): The request body containing start_date and end_date.
 
     Returns:
-        FileResponse: The generated PDF report.
+        StreamingResponse: The generated PDF report as a stream.
     """
     start_date = report_req.start_date
     end_date = report_req.end_date
@@ -284,30 +287,29 @@ def generate_report_endpoint(report_req: ReportRequest):
         raise HTTPException(status_code=400, detail="start_date must be before end_date.")
 
     try:
-        # Define a unique output filename with timestamp
+        # Define a unique output filename with timestamp for the client
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         output_filename = f"Conversation_Report_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}_{timestamp}.pdf"
-        output_path = os.path.join("reports", output_filename)
 
-        # Ensure the reports directory exists
-        os.makedirs("reports", exist_ok=True)
+        # Generate the PDF report in memory
+        pdf_buffer = BytesIO()
+        generate_pdf_report(start_date, end_date, pdf_buffer)
+        pdf_buffer.seek(0)  # Reset buffer pointer to the beginning
 
-        # Generate the PDF report
-        generate_pdf_report(start_date, end_date, output_path)
-
-        # Return the PDF file
-        return FileResponse(path=output_path, media_type='application/pdf', filename=output_filename)
+        # Return the PDF as a StreamingResponse
+        headers = {
+            'Content-Disposition': f'attachment; filename="{output_filename}"'
+        }
+        return StreamingResponse(pdf_buffer, media_type='application/pdf', headers=headers)
 
     except ValueError as ve:
-        # Handle case when no data is found
+        # Handle specific errors like no data found
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
-        # Handle other exceptions
-        print(f"Error generating report: {e}")
-        traceback.print_exc()
+        # Handle unexpected errors
         raise HTTPException(status_code=500, detail="An error occurred while generating the report.")
-
 # ============================== Delete Conversation ======================================== #
+
 
 class DeleteThreadRequest(BaseModel):
     user_id: str

@@ -8,6 +8,13 @@ virtual-environment
 
 __pycache__/*
 
+# Ignore all __pycache__ directories
+
+__pycache__/
+**/__pycache__/
+**.pyc
+**.pyo
+
 venv
 
 mathew_ENV_3.9.0
