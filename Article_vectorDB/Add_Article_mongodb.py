@@ -45,12 +45,28 @@ vector_store = MongoDBAtlasVectorSearch(
     relevance_score_fn="cosine",
 )
 
+
+def ensure_vector_search_index(collection, index_name="Article_vector_index"):
+    """
+    Checks if a MongoDB Atlas Vector Search index exists and notifies the user.
+    """
+    try:
+        # Use MongoDB aggregation to list search indexes (works for vector search)
+        existing_indexes = list(collection.aggregate([{"$listSearchIndexes": {}}]))
+
+        print("Existing MongoDB Atlas Search Indexes:", existing_indexes)
+
+        # Check if the index already exists
+        if any(index["name"] == index_name for index in existing_indexes):
+            print(f"✅ Vector search index '{index_name}' already exists.")
+        else:
+            print(f"⚠️ Vector search index '{index_name}' NOT found in MongoDB Atlas.")
+
+    except Exception as e:
+        print(f"❌ Error checking vector search index: {e}")
+
 # Ensure the vector search index is created
-try:
-    vector_store.create_vector_search_index(dimensions=768)
-    print(f"Vector search index '{ATLAS_VECTOR_SEARCH_INDEX_NAME}' is ready.")
-except Exception as e:
-    print(f"Vector search index '{ATLAS_VECTOR_SEARCH_INDEX_NAME}' already exists or an error occurred: {e}")
+ensure_vector_search_index(collection)
 
 def fetch_articles_from_wordpress() -> List[Dict[str, Any]]:
     """

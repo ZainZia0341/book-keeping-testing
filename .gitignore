@@ -10,10 +10,12 @@ __pycache__/*
 
 # Ignore all __pycache__ directories
 
+# Ignore Python cache
 __pycache__/
 **/__pycache__/
-**.pyc
-**.pyo
+*.pyc
+*.pyo
+*.cpython-*.pyc
 
 venv
 

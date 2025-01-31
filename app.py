@@ -1,11 +1,12 @@
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 from checkpointer_connection.mongodb_chathistory_connection import checkpointer
-from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from LangGraph_flow_Nodes.graph_flow import workflow
 from config import MONGODB_URI
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
+from mongodb_vectordb_knowledge.mongodb_create import create_chunks_document, put_documents_into_index
 from conversations_threads_APIs.delete_conversation import delete_thread
 from Article_vectorDB.Add_Article_mongodb import fetch_and_sync_articles
 from conversation_categorization.conversation_categorization import save_category, categorize_message
@@ -336,3 +337,46 @@ def delete_thread_endpoint(request: DeleteThreadRequest):
         print(f"Unexpected error deleting thread: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="An unexpected error occurred while deleting the thread.")
+    
+
+
+# ================ mongodb vector index collection creation endpoint =================== #
+
+@app.post("/upload_pdf", summary="Upload and Ingest PDF into Vector Store")
+async def upload_pdf(file: UploadFile = File(...)):
+    """
+    Uploads a PDF file, processes it, and adds the embedded chunks to the MongoDB vector store.
+    
+    Args:
+        file (UploadFile): The PDF file to upload.
+    
+    Returns:
+        JSONResponse: Summary of added documents.
+    """
+    # Validate file type
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    
+    try:
+        # Read PDF bytes
+        pdf_bytes = await file.read()
+        
+        # Create document chunks
+        documents = create_chunks_document(pdf_bytes)
+        print("XXXXXXXXXXXXXX ", documents)
+        if not documents:
+            raise HTTPException(status_code=400, detail="No valid text found in the PDF.")
+        
+        # Embed and add documents to the vector store
+        put_documents_into_index(documents)
+        added_count = len(documents)
+        
+        return JSONResponse(status_code=200, content={"message": f"Successfully added {added_count} documents to the vector store."})
+    
+    except HTTPException as he:
+        # Re-raise HTTP exceptions
+        raise he
+    except Exception as e:
+        # Log unexpected errors and return a 500 response
+        print(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while processing the PDF.")

@@ -6,13 +6,15 @@ uvicorn==0.32.1
 fastapi==0.115.6
 pymongo==4.9.2
 langchain-groq==0.2.1
-pypdf==5.1.0
+# pypdf==5.1.0
 langchain-mongodb==0.3.0
 langchain-aws==0.2.10
 langgraph-checkpoint-mongodb==0.1.0
 pandas==2.2.3
 matplotlib==3.9.4
 reportlab==4.2.5
+python-multipart==0.0.20
+PyMuPDF==1.25.2
 
 
 # langchain-experimental==0.3.2

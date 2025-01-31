@@ -58,10 +58,22 @@ def create_vector_search_index(vector_store, dimensions=768):
         dimensions (int): The number of dimensions for the embeddings.
     """
     try:
-        vector_store.create_vector_search_index(dimensions=dimensions)
-        print(f"Vector search index '{ATLAS_VECTOR_SEARCH_INDEX_NAME}' created successfully with {dimensions} dimensions.")
+        # Use MongoDB aggregation to list search indexes (works for vector search)
+
+        client = MongoClient(MONGODB_ATLAS_CLUSTER_URI)
+        collection = client[DB_NAME][COLLECTION_NAME]
+        existing_indexes = list(collection.aggregate([{"$listSearchIndexes": {}}]))
+        index_name = ATLAS_VECTOR_SEARCH_INDEX_NAME
+        print("Existing MongoDB Atlas Search Indexes:", existing_indexes)
+
+        # Check if the index already exists
+        if any(index["name"] == index_name for index in existing_indexes):
+            print(f"✅ Vector search index '{index_name}' already exists.")
+        else:
+            print(f"⚠️ Vector search index '{index_name}' NOT found in MongoDB Atlas.")
+
     except Exception as e:
-        print(f"Error creating vector search index: {e}")
+        print(f"❌ Error checking vector search index: {e}")
 
 def main():
     """
