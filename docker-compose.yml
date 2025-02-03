@@ -5,9 +5,64 @@ services:
     build: .  # Uses the Dockerfile in the current directory
     container_name: book-keeping-container  # Custom container name
     ports:
-      - "8000:8000"  # Maps container port 8000 to host port 8000
+      - "8000:8000"
     env_file:
       - .env  # Loads environment variables securely
+    environment:
+      # Pinecone API
+      - INDEX_NAME=boot-keeping-chatbot
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+
+      # LangChain API
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+
+      # Hugging Face API (uncomment if needed)
+      # - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
+
+      # LLM APIs
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Google Cloud Project
+      - GOOGLE_CLOUD_PROJECT_NAME=bookkepping
+
+      # AWS Bedrock Credentials
+      - BEDROCK_CREDENTIALS_PROFILE_NAME=${BEDROCK_CREDENTIALS_PROFILE_NAME}
+      - BEDROCK_REGION_NAME=${BEDROCK_REGION_NAME}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+
+      # PostgreSQL (uncomment if needed)
+      # - POSTGRES_SQL_URL=${POSTGRES_SQL_URL}
+
+      # MongoDB Connection Details
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_USERNAME=${MONGODB_USERNAME}
+      - MONGODB_PASSWORD=${MONGODB_PASSWORD}
+      - MONGODB_CLUSTER=${MONGODB_CLUSTER}
+      - MONGODB_DATABASE=${MONGODB_DATABASE}
+      - MONGODB_OPTIONS=${MONGODB_OPTIONS}
+      - MONGODB_ATLAS_CLUSTER_URI=${MONGODB_ATLAS_CLUSTER_URI}
+
+      # Other Variables
+      - COLLECTION_NAME=${COLLECTION_NAME}
+      - DB_NAME=${DB_NAME}
+      - ATLAS_VECTOR_SEARCH_INDEX_NAME=${ATLAS_VECTOR_SEARCH_INDEX_NAME}
+
+      # WordPress API
+      - WORDPRESS_API_URL=${WORDPRESS_API_URL}
+
+      # YouTube API
+      - YOUTUBE_API=${YOUTUBE_API}
+      - CHANNEL_ID=${CHANNEL_ID}
+
+      # Ensures real-time logs
+      - PYTHONUNBUFFERED=1
+
     volumes:
-      - .:/app  # Mounts current directory inside the container
-    restart: unless-stopped  # Ensures container restarts unless manually stopped
+      - .:/app
+      - ~/.aws:/root/.aws  # Mount AWS credentials inside container
+
+    restart: unless-stopped

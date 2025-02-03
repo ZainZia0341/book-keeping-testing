@@ -316,7 +316,7 @@ class DeleteThreadRequest(BaseModel):
     user_id: str
     thread_id: str
 
-@app.post("/delete_thread", summary="Delete a specific thread for a user")
+@app.delete("/delete_thread", summary="Delete a specific thread for a user")
 def delete_thread_endpoint(request: DeleteThreadRequest):
     """
     Deletes a specific thread_id for a specific user_id.
